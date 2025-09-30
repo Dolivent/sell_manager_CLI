@@ -23,6 +23,21 @@ def _key_to_path(key: str) -> Path:
     return CACHE_DIR / f"{safe}.ndjson"
 
 
+def _default_serializer(o):
+    # common non-serializable types
+    try:
+        import datetime
+
+        if isinstance(o, datetime.datetime):
+            return o.isoformat()
+    except Exception:
+        pass
+    try:
+        return str(o)
+    except Exception:
+        return None
+
+
 def persist_bars(key: str, bars: Iterable[dict]) -> None:
     """Append bars (iterable of dict) to the cache file for `key`.
 
@@ -32,7 +47,14 @@ def persist_bars(key: str, bars: Iterable[dict]) -> None:
     p = _key_to_path(key)
     with p.open("a", encoding="utf-8") as f:
         for b in bars:
-            f.write(json.dumps(b, ensure_ascii=False) + "\n")
+            try:
+                f.write(json.dumps(b, ensure_ascii=False, default=_default_serializer) + "\n")
+            except Exception:
+                try:
+                    f.write(json.dumps(str(b), ensure_ascii=False) + "\n")
+                except Exception:
+                    # drop problematic item
+                    continue
 
 
 def load_bars(key: str, limit: int | None = None) -> List[Any]:

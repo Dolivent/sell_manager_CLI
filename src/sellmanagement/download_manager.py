@@ -16,11 +16,32 @@ from .trace import append_trace
 logger = logging.getLogger(__name__)
 
 
+def _normalize_rows(rows):
+    out = []
+    try:
+        for b in rows or []:
+            if isinstance(b, dict):
+                out.append(b)
+            else:
+                out.append({
+                    'Date': getattr(b, 'date', None),
+                    'Open': getattr(b, 'open', None),
+                    'High': getattr(b, 'high', None),
+                    'Low': getattr(b, 'low', None),
+                    'Close': getattr(b, 'close', None) or getattr(b, 'closePrice', None) or getattr(b, 'Close', None),
+                    'Volume': getattr(b, 'volume', None),
+                })
+    except Exception:
+        return []
+    return out
+
+
 class DownloadManager:
-    def __init__(self, ib_client: Any, concurrency: int = 4, initial_delay: float = 0.1, max_delay: float = 30.0):
+    def __init__(self, ib_client: Any, concurrency: int = 4, initial_delay: float = 0.1, max_delay: float = 30.0, async_bridge: Any = None):
         self._ib = ib_client
         self._sem = threading.Semaphore(concurrency)
         self._rl = AdaptiveRateLimiter(initial_delay=initial_delay, max_delay=max_delay)
+        self._bridge = async_bridge
 
     def download_daily(self, token: str, duration: str = "365 D") -> List[dict]:
         """Blocking download guarded by semaphore and rate limiter."""
@@ -32,7 +53,24 @@ class DownloadManager:
                 except Exception:
                     pass
             try:
-                rows = self._ib.download_daily(token, duration=duration)
+                # If an async bridge is available, schedule the async request there
+                if self._bridge is not None and getattr(self._bridge, 'ib', None) is not None:
+                    try:
+                        # build contract via ib_insync Stock in this thread
+                        from ib_insync import Stock  # type: ignore
+                        ex, sym = token.split(':', 1) if ':' in token else ('SMART', token)
+                        contract = Stock(sym, ex, 'USD')
+                        coro = self._bridge.ib.reqHistoricalDataAsync(contract, endDateTime='', durationStr=duration, barSizeSetting='1 day', whatToShow='TRADES', useRTH=True)
+                        fut = self._bridge.run_coroutine(coro)
+                        rows = fut.result(timeout=20)
+                    except Exception as e:
+                        rows = []
+                        self._rl.on_failure(str(e))
+                else:
+                    rows = self._ib.download_daily(token, duration=duration)
+
+                # normalize before returning/persisting
+                rows = _normalize_rows(rows)
                 if rows:
                     self._rl.on_success()
                 else:
@@ -57,7 +95,21 @@ class DownloadManager:
                 except Exception:
                     pass
             try:
-                rows = self._ib.download_halfhours(token, duration=duration)
+                # If an async bridge is available, schedule the async request there
+                if self._bridge is not None and getattr(self._bridge, 'ib', None) is not None:
+                    try:
+                        from ib_insync import Stock  # type: ignore
+                        ex, sym = token.split(':', 1) if ':' in token else ('SMART', token)
+                        contract = Stock(sym, ex, 'USD')
+                        coro = self._bridge.ib.reqHistoricalDataAsync(contract, endDateTime='', durationStr=duration, barSizeSetting='30 mins', whatToShow='TRADES', useRTH=True)
+                        rows = self._bridge.run_coroutine_and_wait(coro, timeout=20)
+                    except Exception as e:
+                        rows = []
+                        self._rl.on_failure(str(e))
+                else:
+                    rows = self._ib.download_halfhours(token, duration=duration)
+                # normalize before returning/persisting
+                rows = _normalize_rows(rows)
                 if rows:
                     self._rl.on_success()
                 else:
@@ -85,7 +137,31 @@ class DownloadQueue:
         self._queue: "Queue[tuple]" = Queue()
         self._workers: List[threading.Thread] = []
         self._stop = threading.Event()
-        self._dm = DownloadManager(ib_client, concurrency=concurrency)
+        # Create a shared async bridge for scheduling ib_insync async calls from worker threads
+        try:
+            from .async_ib_bridge import AsyncIBBridge
+
+            # prefer to use host/port/client_id from ib_client when available
+            host = getattr(ib_client, 'host', '127.0.0.1')
+            port = getattr(ib_client, 'port', 4001)
+            cid = getattr(ib_client, 'client_id', 1)
+            self._bridge = AsyncIBBridge(host=host, port=port, client_id=cid)
+            try:
+                self._bridge.start()
+                # wait briefly for bridge to reach connected state before starting workers
+                try:
+                    waited = 0.0
+                    while waited < 5.0 and getattr(self._bridge, 'status', None) != 'connected':
+                        time.sleep(0.1)
+                        waited += 0.1
+                except Exception:
+                    pass
+            except Exception:
+                self._bridge = None
+        except Exception:
+            self._bridge = None
+
+        self._dm = DownloadManager(ib_client, concurrency=concurrency, async_bridge=self._bridge)
         # batch controls (defaults)
         self._batch_size = 32
         self._batch_delay = 6.0
@@ -192,6 +268,18 @@ class DownloadQueue:
         from .cache import persist_bars
 
         while not self._stop.is_set():
+            # if bridge exists, wait until it reports connected to avoid scheduling when no loop
+            try:
+                if getattr(self, '_bridge', None) is not None:
+                    try:
+                        if getattr(self._bridge, 'status', None) != 'connected':
+                            time.sleep(0.2)
+                            continue
+                    except Exception:
+                        # if checking status fails, proceed (bridge may be starting)
+                        pass
+            except Exception:
+                pass
             try:
                 token, kind = self._queue.get(timeout=1)
                 append_trace({"event": "dequeue", "token": token, "kind": kind, "queue_size": self.queue_size()})
@@ -220,7 +308,8 @@ class DownloadQueue:
                     from .downloader import batch_download_daily
 
                     append_trace({"event": "batch_download_start", "tokens": tokens})
-                    results = batch_download_daily(self._ib, tokens, batch_size=batch_size, batch_delay=self._batch_delay, duration="1 Y")
+                    # pass DownloadManager so downloads use the shared bridge when available
+                    results = batch_download_daily(self._dm, tokens, batch_size=batch_size, batch_delay=self._batch_delay, duration="1 Y")
                     append_trace({"event": "batch_download_done", "results_count": len(results)})
                     for tk, rows in results.items():
                         append_trace({"event": "batch_item_result", "token": tk, "rows": len(rows)})
@@ -233,7 +322,8 @@ class DownloadQueue:
                     append_trace({"event": "half_batch_start", "tokens": tokens})
                     for tk in tokens:
                         try:
-                            rows = backfill_halfhours_sequential(self._ib, tk, target_bars=31)
+                            # use DownloadManager so bridge is used for async scheduling
+                            rows = backfill_halfhours_sequential(self._dm, tk, target_bars=31)
                             if rows:
                                 persist_bars(f"{tk}:30m", rows)
                                 append_trace({"event": "half_backfill_ok", "token": tk, "rows": len(rows)})

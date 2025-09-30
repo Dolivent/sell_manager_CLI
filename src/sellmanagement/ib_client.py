@@ -9,17 +9,6 @@ class IBClient:
         self.port = port
         self.client_id = client_id
         self.ib = IB()
-        # Background async bridge (owns its own IB instance on an asyncio loop)
-        try:
-            from .async_ib_bridge import AsyncIBBridge
-
-            self._bridge = AsyncIBBridge(host=self.host, port=self.port, client_id=self.client_id)
-            try:
-                self._bridge.start()
-            except Exception:
-                self._bridge = None
-        except Exception:
-            self._bridge = None
 
     def connect(self) -> bool:
         try:
@@ -114,50 +103,15 @@ class IBClient:
             return []
         try:
             contract = Stock(sym, ex, 'USD')
-            bars = None
-
-            # Try background bridge first (owns its own event loop and IB instance)
-            if self._bridge and getattr(self._bridge, 'ib', None) is not None and hasattr(self._bridge.ib, 'reqHistoricalDataAsync'):
-                try:
-                    coro = self._bridge.ib.reqHistoricalDataAsync(contract, endDateTime='', durationStr=duration, barSizeSetting='1 day', whatToShow='TRADES', useRTH=True)
-                    fut = self._bridge.run_coroutine(coro)
-                    try:
-                        bars = fut.result(timeout=15)
-                    except Exception as e_async:
-                        try:
-                            from .trace import append_trace
-                            append_trace({"event": "download_daily_bridge_error", "token": token, "error": str(e_async)})
-                        except Exception:
-                            pass
-                        bars = None
-                except Exception as e:
-                    try:
-                        from .trace import append_trace
-                        append_trace({"event": "download_daily_bridge_schedule_error", "token": token, "error": str(e)})
-                    except Exception:
-                        pass
-
-            # If bridge didn't yield results, try local async on this IB if available
-            if bars is None and hasattr(self.ib, 'reqHistoricalDataAsync'):
-                try:
-                    import asyncio
-
-                    coro = self.ib.reqHistoricalDataAsync(contract, endDateTime='', durationStr=duration, barSizeSetting='1 day', whatToShow='TRADES', useRTH=True)
-                    try:
-                        bars = asyncio.run(coro)
-                    except Exception as e_async:
-                        try:
-                            from .trace import append_trace
-                            append_trace({"event": "download_daily_local_async_error", "token": token, "error": str(e_async)})
-                        except Exception:
-                            pass
-                        bars = None
-                except Exception:
-                    bars = None
-
-            # sync fallback if no async result
-            if bars is None:
-                bars = self.ib.reqHistoricalData(contract, endDateTime='', durationStr=duration, barSizeSetting='1 day', whatToShow='TRADES', useRTH=True)
+            # Simpler: use synchronous request; callers run this in worker threads
+            bars = self.ib.reqHistoricalData(
+                contract,
+                endDateTime='',
+                durationStr=duration,
+                barSizeSetting='1 day',
+                whatToShow='TRADES',
+                useRTH=True,
+            )
 
             out = []
             for b in bars:
@@ -196,50 +150,15 @@ class IBClient:
             return []
         try:
             contract = Stock(sym, ex, 'USD')
-            bars = None
-
-            # Try background bridge first (owns its own event loop and IB instance)
-            if self._bridge and getattr(self._bridge, 'ib', None) is not None and hasattr(self._bridge.ib, 'reqHistoricalDataAsync'):
-                try:
-                    coro = self._bridge.ib.reqHistoricalDataAsync(contract, endDateTime='', durationStr=duration, barSizeSetting='30 mins', whatToShow='TRADES', useRTH=True)
-                    fut = self._bridge.run_coroutine(coro)
-                    try:
-                        bars = fut.result(timeout=15)
-                    except Exception as e_async:
-                        try:
-                            from .trace import append_trace
-                            append_trace({"event": "download_half_bridge_error", "token": token, "error": str(e_async)})
-                        except Exception:
-                            pass
-                        bars = None
-                except Exception as e:
-                    try:
-                        from .trace import append_trace
-                        append_trace({"event": "download_half_bridge_schedule_error", "token": token, "error": str(e)})
-                    except Exception:
-                        pass
-
-            # If bridge didn't yield results, try local async on this IB if available
-            if bars is None and hasattr(self.ib, 'reqHistoricalDataAsync'):
-                try:
-                    import asyncio
-
-                    coro = self.ib.reqHistoricalDataAsync(contract, endDateTime='', durationStr=duration, barSizeSetting='30 mins', whatToShow='TRADES', useRTH=True)
-                    try:
-                        bars = asyncio.run(coro)
-                    except Exception as e_async:
-                        try:
-                            from .trace import append_trace
-                            append_trace({"event": "download_half_local_async_error", "token": token, "error": str(e_async)})
-                        except Exception:
-                            pass
-                        bars = None
-                except Exception:
-                    bars = None
-
-            # sync fallback if no async result
-            if bars is None:
-                bars = self.ib.reqHistoricalData(contract, endDateTime='', durationStr=duration, barSizeSetting='30 mins', whatToShow='TRADES', useRTH=True)
+            # Simpler: use synchronous request; callers run this in worker threads
+            bars = self.ib.reqHistoricalData(
+                contract,
+                endDateTime='',
+                durationStr=duration,
+                barSizeSetting='30 mins',
+                whatToShow='TRADES',
+                useRTH=True,
+            )
 
             out = []
             for b in bars:

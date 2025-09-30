@@ -7,7 +7,44 @@ from typing import Optional
 
 def _cmd_start(args: argparse.Namespace) -> None:
     config = Config(dry_run=not getattr(args, 'live', False), client_id=getattr(args, 'client_id', 1))
+    # start async bridge first so we only use one IB connection (bridge is authoritative)
+    bridge = None
+    try:
+        from .async_ib_bridge import AsyncIBBridge
+        # try a small range of client ids to avoid "clientId already in use" issues
+        start_id = int(getattr(config, 'client_id', 1) or 1)
+        bridge_connected = False
+        for cid_offset in range(0, 8):
+            try_id = start_id + cid_offset
+            try:
+                b = AsyncIBBridge(host=config.host, port=config.port, client_id=try_id)
+                b.start(wait_timeout=6.0)
+                # check if connected
+                if getattr(b, 'ib', None) is not None and getattr(b.ib, 'isConnected', lambda: False)():
+                    bridge = b
+                    config.client_id = try_id
+                    bridge_connected = True
+                    break
+                else:
+                    try:
+                        b.stop()
+                    except Exception:
+                        pass
+            except Exception:
+                # try next id
+                continue
+        if not bridge_connected:
+            bridge = None
+    except Exception:
+        bridge = None
+
     ib = IBClient(host=config.host, port=config.port, client_id=config.client_id)
+    # attach bridge so IBClient.connect can use bridge's connection instead of opening another
+    try:
+        if bridge is not None:
+            setattr(ib, '_bridge', bridge)
+    except Exception:
+        pass
     connected = ib.connect()
     if not connected:
         print("Failed to connect to IB Gateway/TWS")
@@ -161,7 +198,16 @@ def _cmd_start(args: argparse.Namespace) -> None:
             # create a background download queue so updater isn't blocked by network
             try:
                 from .download_manager import DownloadQueue
+                # start async bridge for reliable async calls
+                try:
+                    from .async_ib_bridge import AsyncIBBridge
+                    bridge = AsyncIBBridge(host=config.host, port=config.port, client_id=config.client_id)
+                    bridge.start()
+                except Exception:
+                    bridge = None
+
                 dlq = DownloadQueue(ib, workers=config.download_workers, concurrency=config.download_concurrency)
+                dlq._bridge = bridge
                 # configure batch params
                 try:
                     dlq._batch_size = int(config.batch_size)

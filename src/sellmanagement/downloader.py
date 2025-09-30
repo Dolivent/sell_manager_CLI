@@ -54,6 +54,7 @@ def batch_download_daily(ib_client, tickers: Iterable[str], batch_size: int = 32
 
 def _safe_download_daily(ib_client, token: str, duration: str) -> List[dict]:
     try:
+        # ib_client may be a DownloadManager instance that exposes download_daily
         return ib_client.download_daily(token, duration=duration) or []
     except Exception:
         return []
