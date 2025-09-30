@@ -60,17 +60,68 @@ def _cmd_start(args: argparse.Namespace) -> None:
                     continue
             return out
 
+        # shared download manager to avoid recreating per-ticker
+        try:
+            from .download_manager import DownloadManager
+            from .cache import persist_bars
+            dm = DownloadManager(ib, concurrency=8)
+        except Exception:
+            dm = None
+
         def fetch_daily(ticker: str):
             rows = load_bars(f"{ticker}:1d")
-            return _extract_closes(rows)
+            closes = _extract_closes(rows)
+            if closes:
+                return closes
+            # cache empty -> request from IB via shared DownloadManager and persist
+            try:
+                if dm is None:
+                    return []
+                drows = dm.download_daily(ticker)
+                if drows:
+                    persist_bars(f"{ticker}:1d", drows)
+                    return _extract_closes(drows)
+            except Exception:
+                pass
+            return []
 
         def fetch_hourly(ticker: str):
-            # try 1h cache first, else aggregate 30m
+            # try 1h cache first
             rows = load_bars(f"{ticker}:1h")
-            if rows:
-                return _extract_closes(rows)
+            closes = _extract_closes(rows)
+            if closes:
+                return closes
+            # try half-hour cache
             halfs = load_bars(f"{ticker}:30m")
-            return _extract_closes(halfs)
+            if halfs:
+                # aggregate 30m -> hourly by taking every second bar's close when possible
+                vals = _extract_closes(halfs)
+                if not vals:
+                    return []
+                hours = []
+                for i in range(1, len(vals), 2):
+                    hours.append(vals[i])
+                if hours:
+                    return hours
+                return [vals[-1]]
+
+            # if still empty, request from IB via DownloadManager and persist
+            try:
+                if dm is None:
+                    return []
+                hrows = dm.download_halfhours(ticker)
+                if hrows:
+                    persist_bars(f"{ticker}:30m", hrows)
+                    vals = _extract_closes(hrows)
+                    hours = []
+                    for i in range(1, len(vals), 2):
+                        hours.append(vals[i])
+                    if hours:
+                        return hours
+                    return [vals[-1]] if vals else []
+            except Exception:
+                pass
+            return []
 
         assignments_map = get_assignments()
 
@@ -107,15 +158,58 @@ def _cmd_start(args: argparse.Namespace) -> None:
 
         tickers = [r.get('ticker') for r in get_assignments_list()]
         if tickers:
+            # create a background download queue so updater isn't blocked by network
+            try:
+                from .download_manager import DownloadQueue
+                dlq = DownloadQueue(ib, workers=2, concurrency=4)
+            except Exception:
+                dlq = None
+
+            def fetch_daily(ticker: str):
+                rows = load_bars(f"{ticker}:1d")
+                closes = _extract_closes(rows)
+                if closes:
+                    return closes
+                # enqueue download and return empty (worker will persist)
+                try:
+                    if dlq is not None:
+                        dlq.enqueue(ticker, kind='daily')
+                except Exception:
+                    pass
+                return []
+
+            def fetch_hourly(ticker: str):
+                rows = load_bars(f"{ticker}:1h")
+                closes = _extract_closes(rows)
+                if closes:
+                    return closes
+                halfs = load_bars(f"{ticker}:30m")
+                if halfs:
+                    vals = _extract_closes(halfs)
+                    hours = []
+                    for i in range(1, len(vals), 2):
+                        hours.append(vals[i])
+                    if hours:
+                        return hours
+                    return [vals[-1]] if vals else []
+                try:
+                    if dlq is not None:
+                        dlq.enqueue(ticker, kind='half')
+                except Exception:
+                    pass
+                return []
+
             upd = MinuteUpdater(fetch_daily, fetch_hourly, on_update_handler, tickers=tickers)
             upd.start()
-            print("Minute updater started — running in background. Press Ctrl+C to exit.")
+            print("Minute updater and download queue started — running in background. Press Ctrl+C to exit.")
             try:
                 import time
                 while True:
                     time.sleep(1)
             except KeyboardInterrupt:
                 upd.stop()
+                if dlq is not None:
+                    dlq.stop(wait=True)
                 print("Stopped.")
     except Exception:
         pass

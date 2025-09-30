@@ -74,4 +74,81 @@ class IBClient:
                     pass
         return out
 
+    def _parse_token(self, token: str):
+        # token format: EXCHANGE:SYMBOL or SYMBOL
+        if not token:
+            return ('SMART', '')
+        if ':' in token:
+            ex, sym = token.split(':', 1)
+            return (ex.strip().upper() or 'SMART', sym.strip().upper())
+        return ('SMART', token.strip().upper())
+
+    def download_daily(self, token: str, duration: str = "365 D"):
+        """Blocking download of daily bars for `token` using ib_insync.
+
+        Returns list of dict rows or empty list on failure.
+        """
+        try:
+            from ib_insync import Stock  # type: ignore
+        except Exception:
+            return []
+
+        ex, sym = self._parse_token(token)
+        if not sym:
+            return []
+        try:
+            contract = Stock(sym, ex, 'USD')
+            # Prefer async API if available
+            if hasattr(self.ib, 'reqHistoricalDataAsync'):
+                import asyncio
+
+                coro = self.ib.reqHistoricalDataAsync(contract, endDateTime='', durationStr=duration, barSizeSetting='1 day', whatToShow='TRADES', useRTH=True)
+                try:
+                    bars = asyncio.run(coro)
+                except Exception:
+                    # fallback to sync call
+                    bars = self.ib.reqHistoricalData(contract, endDateTime='', durationStr=duration, barSizeSetting='1 day', whatToShow='TRADES', useRTH=True)
+            else:
+                bars = self.ib.reqHistoricalData(contract, endDateTime='', durationStr=duration, barSizeSetting='1 day', whatToShow='TRADES', useRTH=True)
+
+            out = []
+            for b in bars:
+                out.append({'Date': getattr(b, 'date', None), 'Open': getattr(b, 'open', None), 'High': getattr(b, 'high', None), 'Low': getattr(b, 'low', None), 'Close': getattr(b, 'close', None), 'Volume': getattr(b, 'volume', None)})
+            return out
+        except Exception:
+            return []
+
+    def download_halfhours(self, token: str, duration: str = "31 D"):
+        """Blocking download of 30-minute bars for `token`.
+
+        Returns list of dict rows or empty list on failure.
+        """
+        try:
+            from ib_insync import Stock  # type: ignore
+        except Exception:
+            return []
+
+        ex, sym = self._parse_token(token)
+        if not sym:
+            return []
+        try:
+            contract = Stock(sym, ex, 'USD')
+            if hasattr(self.ib, 'reqHistoricalDataAsync'):
+                import asyncio
+
+                coro = self.ib.reqHistoricalDataAsync(contract, endDateTime='', durationStr=duration, barSizeSetting='30 mins', whatToShow='TRADES', useRTH=True)
+                try:
+                    bars = asyncio.run(coro)
+                except Exception:
+                    bars = self.ib.reqHistoricalData(contract, endDateTime='', durationStr=duration, barSizeSetting='30 mins', whatToShow='TRADES', useRTH=True)
+            else:
+                bars = self.ib.reqHistoricalData(contract, endDateTime='', durationStr=duration, barSizeSetting='30 mins', whatToShow='TRADES', useRTH=True)
+
+            out = []
+            for b in bars:
+                out.append({'Date': getattr(b, 'date', None), 'Open': getattr(b, 'open', None), 'High': getattr(b, 'high', None), 'Low': getattr(b, 'low', None), 'Close': getattr(b, 'close', None), 'Volume': getattr(b, 'volume', None)})
+            return out
+        except Exception:
+            return []
+
 

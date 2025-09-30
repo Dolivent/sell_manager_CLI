@@ -6,6 +6,9 @@ fetch functions. Keep this module small and testable.
 import threading
 import time
 from typing import Callable, Optional, List
+import math
+import random
+import time as _time
 
 
 class MinuteUpdater:
@@ -53,9 +56,35 @@ class MinuteUpdater:
                 # perform per-ticker updates (sequential; downloader handles concurrency)
                 for t in list(self._tickers):
                     try:
-                        daily = self._fetch_daily(t)
-                        hourly = self._fetch_hourly(t)
-                        self._on_update(t, daily, hourly)
+                        # use a shared adaptive rate limiter to avoid pacing problems
+                        try:
+                            from .rate_limiter import AdaptiveRateLimiter
+                        except Exception:
+                            AdaptiveRateLimiter = None
+
+                        rl = None
+                        try:
+                            rl = AdaptiveRateLimiter() if AdaptiveRateLimiter is not None else None
+                        except Exception:
+                            rl = None
+
+                        if rl is not None:
+                            d = rl.get_delay()
+                            if d and d > 0:
+                                _time.sleep(d)
+
+                        daily = []
+                        hourly = []
+                        try:
+                            daily = self._fetch_daily(t)
+                            hourly = self._fetch_hourly(t)
+                            if rl is not None:
+                                rl.on_success()
+                        except Exception as e:
+                            if rl is not None:
+                                rl.on_failure(str(e))
+                        # call update handler
+                        self._on_update(t, daily or [], hourly or [])
                     except Exception:
                         # swallow per-ticker errors to avoid stopping the loop
                         continue
