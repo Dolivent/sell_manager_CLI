@@ -136,7 +136,7 @@ class IBClient:
             return []
 
     # Half-hour downloads removed in simplified mode
-    def download_halfhours(self, token: str, duration: str = "31 D", max_bars: int | None = 31):
+    def download_halfhours(self, token: str, duration: str = "31 D", max_bars: int | None = 31, endDateTime: str = ""):
         """Blocking download of 30-minute bars for `token`.
 
         Returns list of dict rows (newest last) or empty list on failure.
@@ -157,7 +157,7 @@ class IBClient:
         try:
             contract = Stock(sym, ex, 'USD')
             try:
-                bars = self.ib.run(self.ib.reqHistoricalDataAsync(contract, endDateTime='', durationStr=duration, barSizeSetting='30 mins', whatToShow='TRADES', useRTH=True))
+                bars = self.ib.run(self.ib.reqHistoricalDataAsync(contract, endDateTime=endDateTime or '', durationStr=duration, barSizeSetting='30 mins', whatToShow='TRADES', useRTH=True))
             except Exception:
                 bars = []
 
