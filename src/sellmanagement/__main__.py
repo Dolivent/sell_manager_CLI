@@ -2,8 +2,6 @@ from .config import Config
 from .ib_client import IBClient
 from .assign import set_assignment, get_assignments_list
 from .download_manager import persist_batch_daily
-from .download_manager import backfill_halfhours_for_tokens
-from .trace import clear_trace_logs
 from datetime import datetime
 from .minute_snapshot import run_minute_snapshot
 import argparse
@@ -12,11 +10,6 @@ from typing import Optional
 
 def _cmd_start(args: argparse.Namespace) -> None:
     config = Config(dry_run=not getattr(args, 'live', False), client_id=getattr(args, 'client_id', 1))
-    # clear trace logs for a fresh run
-    try:
-        clear_trace_logs()
-    except Exception:
-        pass
 
     ib = IBClient(host=config.host, port=config.port, client_id=config.client_id)
     if not ib.connect():
@@ -40,19 +33,6 @@ def _cmd_start(args: argparse.Namespace) -> None:
         persist_batch_daily(ib, tickers, batch_size=getattr(config, 'batch_size', 32), batch_delay=getattr(config, 'batch_delay', 6.0), duration="1 Y")
     except Exception as e:
         print(f"Batch download failed: {e}")
-
-    # Perform half-hour backfill at startup (to build hourly MAs). This runs in
-    # parallel across tickers but each ticker's backfill is sequential to avoid
-    # pacing issues. Default concurrency small to be safe.
-    if not getattr(args, 'no_backfill', False):
-        try:
-            print("Starting half-hour backfill (may take some time)...")
-            backfill_halfhours_for_tokens(ib, tickers, concurrency=getattr(config, 'concurrency', 4), bars_per_call=31, target_bars=200)
-            print("Half-hour backfill complete.")
-        except Exception as e:
-            print(f"Half-hour backfill failed: {e}")
-    else:
-        print("Skipping half-hour backfill (--no-backfill set)")
 
     # Start a continuous minute-aligned loop: run snapshot at top of every minute
     try:
@@ -133,7 +113,6 @@ def main(argv: Optional[list] = None) -> None:
     p_start.add_argument("--dry-run", action="store_true", default=True, help="Run in dry-run mode (default)")
     p_start.add_argument("--live", action="store_true", help="Enable live mode (must be explicit)")
     p_start.add_argument("--client-id", type=int, default=1)
-    p_start.add_argument("--no-backfill", action="store_true", help="Skip half-hour startup backfill")
 
     # metrics and retry commands removed in simplified mode
 
