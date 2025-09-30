@@ -25,7 +25,7 @@ def persist_halfhour_once(ib_client: Any, tokens: List[str], batch_size: int = 3
     them into the half-hour cache key `token:30m`.
     """
     from .downloader import batch_download_halfhours
-    from .cache import persist_bars
+    from .cache import merge_bars
 
     append_trace({"event": "batch_halfhour_download_start", "tokens": tokens})
     try:
@@ -48,7 +48,8 @@ def persist_halfhour_once(ib_client: Any, tokens: List[str], batch_size: int = 3
         except Exception:
             pass
         if rows:
-            persist_bars(f"{tk}:30m", rows)
+            # merge to avoid duplicate entries when called repeatedly
+            merge_bars(f"{tk}:30m", rows)
 
 
 def backfill_halfhours_for_ticker(ib_client: Any, token: str, bars_per_call: int = 31, target_bars: int = 200) -> None:
@@ -58,7 +59,7 @@ def backfill_halfhours_for_ticker(ib_client: Any, token: str, bars_per_call: int
     This function performs per-ticker serial calls to avoid pacing violations.
     """
     from .downloader import download_halfhours_page
-    from .cache import load_bars, persist_bars
+    from .cache import load_bars, merge_bars
 
     key = f"{token}:30m"
     try:
@@ -79,11 +80,19 @@ def backfill_halfhours_for_ticker(ib_client: Any, token: str, bars_per_call: int
             oldest = existing[0].get('Date')
             # ask for bars ending before the oldest existing bar
             end_dt = str(oldest)
+        append_trace({"event": "backfill_page_request", "token": token, "endDateTime": end_dt, "bars_per_call": bars_per_call})
+        try:
+            from .trace import append_halfhour_trace
+            append_halfhour_trace({"event": "backfill_page_request", "token": token, "endDateTime": end_dt, "bars_per_call": bars_per_call})
+        except Exception:
+            pass
+
         rows = download_halfhours_page(ib_client, token, duration=f"{bars_per_call} D", endDateTime=end_dt, max_bars=bars_per_call)
         if not rows:
             # stop on empty response to avoid infinite loop
             break
-        persist_bars(key, rows)
+        # merge pages into cache (dedupe by Date)
+        merge_bars(key, rows)
         existing = load_bars(key)
         pages += 1
         append_trace({"event": "backfill_page_done", "token": token, "page": pages, "cached": len(existing)})

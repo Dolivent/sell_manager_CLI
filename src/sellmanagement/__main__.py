@@ -3,6 +3,7 @@ from .ib_client import IBClient
 from .assign import set_assignment, get_assignments_list
 from .download_manager import persist_batch_daily
 from .download_manager import backfill_halfhours_for_tokens
+from .trace import clear_trace_logs
 from datetime import datetime
 from .minute_snapshot import run_minute_snapshot
 import argparse
@@ -11,6 +12,11 @@ from typing import Optional
 
 def _cmd_start(args: argparse.Namespace) -> None:
     config = Config(dry_run=not getattr(args, 'live', False), client_id=getattr(args, 'client_id', 1))
+    # clear trace logs for a fresh run
+    try:
+        clear_trace_logs()
+    except Exception:
+        pass
 
     ib = IBClient(host=config.host, port=config.port, client_id=config.client_id)
     if not ib.connect():

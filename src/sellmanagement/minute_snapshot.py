@@ -9,6 +9,7 @@ from .downloader import batch_download_daily
 from .download_manager import persist_halfhour_once
 from .aggregator import aggregate_and_persist_to_hour
 from .indicators import compute_sma_series_all, compute_ema_series_all
+from .trace import append_halfhour_trace
 from .trace import append_trace
 from .indicators import compute_sma_series_all, compute_ema_series_all
 
@@ -55,18 +56,35 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
         # only persist into half-hour cache for daily assignments; for hourly
         # assignments we'll still try to load hourly cache from existing files.
         try:
-            persist_halfhour_once(ib_client, [tk], batch_size=1, batch_delay=0, duration="31 D")
+            append_halfhour_trace({"event": "snapshot_halftime_fetch_start", "token": tk})
         except Exception:
-            append_trace({"event": "halfhour_persist_failed", "token": tk})
+            pass
+        try:
+            persist_halfhour_once(ib_client, [tk], batch_size=1, batch_delay=0, duration="31 D")
+            append_halfhour_trace({"event": "snapshot_halftime_fetch_done", "token": tk})
+        except Exception as e:
+            append_trace({"event": "halfhour_persist_failed", "token": tk, "error": str(e)})
+            try:
+                append_halfhour_trace({"event": "snapshot_halftime_fetch_failed", "token": tk, "error": str(e)})
+            except Exception:
+                pass
 
         # if assignment is hourly, aggregate half-hours into hourly cache and load
         if timeframe.strip().upper() in ("1H", "H", "HOURLY"):
             half_key = f"{tk}:30m"
             hour_key = f"{tk}:1h"
             try:
-                aggregate_and_persist_to_hour(half_key, hour_key)
+                append_halfhour_trace({"event": "aggregate_start_from_snapshot", "token": tk, "half_key": half_key})
             except Exception:
-                append_trace({"event": "aggregate_failed", "token": tk})
+                pass
+            try:
+                aggregate_and_persist_to_hour(half_key, hour_key)
+            except Exception as e:
+                append_trace({"event": "aggregate_failed", "token": tk, "error": str(e)})
+                try:
+                    append_halfhour_trace({"event": "aggregate_failed", "token": tk, "error": str(e)})
+                except Exception:
+                    pass
             bars = load_bars(hour_key, limit=365)
         else:
             # daily timeframe: merge downloaded daily bars and load daily cache

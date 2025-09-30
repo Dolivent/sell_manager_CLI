@@ -1,6 +1,7 @@
 from typing import List, Dict, Any
 from datetime import datetime
 from .cache import load_bars, write_bars, persist_bars
+from .trace import append_halfhour_trace
 
 
 def halfhours_to_hours(halfhour_bars: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -13,20 +14,42 @@ def halfhours_to_hours(halfhour_bars: List[Dict[str, Any]]) -> List[Dict[str, An
     if not halfhour_bars:
         return []
 
-    # group by hour key based on Date string; assume Date is ISO-like or comparable
-    groups: Dict[str, List[Dict[str, Any]]] = {}
+    # Parse dates robustly, dedupe exact timestamps, and sort by datetime
+    parsed: List[tuple[datetime, Dict[str, Any]]] = []
+    seen: Dict[str, Dict[str, Any]] = {}
+    dup_count = 0
     for b in halfhour_bars:
         d = b.get('Date')
         if d is None:
             continue
+        s = str(d)
+        # keep last occurrence for a given exact timestamp
+        seen[s] = b
+
+    for s, b in seen.items():
         try:
-            dt = datetime.fromisoformat(str(d))
+            dt = datetime.fromisoformat(s)
         except Exception:
-            # fallback: use string prefix up to hour
-            key = str(d)[:13]
-        else:
-            key = dt.replace(minute=0, second=0, microsecond=0).isoformat()
-        groups.setdefault(key, []).append(b)
+            # try trimming timezone offset if present, fallback to parsing up to minute
+            try:
+                dt = datetime.fromisoformat(s[:19])
+            except Exception:
+                # last resort: parse year-month-day hour:minute by slicing
+                try:
+                    dt = datetime.fromisoformat(s[:16] + ":00")
+                except Exception:
+                    # skip unparsable entries
+                    continue
+        parsed.append((dt, b))
+
+    # sort by datetime ascending
+    parsed.sort(key=lambda t: t[0])
+
+    # group by hour
+    groups: Dict[datetime, List[Dict[str, Any]]] = {}
+    for dt, b in parsed:
+        hour_dt = dt.replace(minute=0, second=0, microsecond=0)
+        groups.setdefault(hour_dt, []).append(b)
 
     keys = sorted(groups.keys())
     out: List[Dict[str, Any]] = []
@@ -40,7 +63,7 @@ def halfhours_to_hours(halfhour_bars: List[Dict[str, Any]]) -> List[Dict[str, An
         closes = [float(x.get('Close') or 0.0) for x in bucket]
         volumes = [float(x.get('Volume') or 0.0) for x in bucket]
         hour_bar = {
-            'Date': k,
+            'Date': k.isoformat(),
             'Open': opens[0],
             'High': max(highs) if highs else None,
             'Low': min(lows) if lows else None,
@@ -57,8 +80,27 @@ def aggregate_and_persist_to_hour(key_halfhour: str, key_hour: str) -> None:
     Keys are in cache.key format `EXCHANGE:SYM:30m` and `EXCHANGE:SYM:1h`.
     """
     hh = load_bars(key_halfhour, limit=None)
+    try:
+        append_halfhour_trace({"event": "aggregate_start", "halfhour_key": key_halfhour, "halfhour_count": len(hh)})
+    except Exception:
+        pass
     hours = halfhours_to_hours(hh)
     if hours:
+        # compute some diagnostics
+        try:
+            sample_dates = [b.get('Date') for b in hh[:5]] + [b.get('Date') for b in hh[-5:]]
+        except Exception:
+            sample_dates = []
+        unique_hours = len(hours)
+        try:
+            append_halfhour_trace({"event": "aggregate_diagnostics", "halfhour_key": key_halfhour, "halfhour_count": len(hh), "unique_hour_count": unique_hours, "sample_dates": sample_dates[:10]})
+        except Exception:
+            pass
+
         # replace hourly cache with aggregated bars
         write_bars(key_hour, hours)
+        try:
+            append_halfhour_trace({"event": "aggregate_done", "halfhour_key": key_halfhour, "hour_key": key_hour, "hour_count": unique_hours})
+        except Exception:
+            pass
 

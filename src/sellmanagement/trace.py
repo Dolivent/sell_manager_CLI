@@ -9,6 +9,22 @@ def _trace_path() -> Path:
     return p
 
 
+def clear_trace_logs() -> None:
+    """Clear both download and half-hour trace logs."""
+    try:
+        t = _trace_path()
+        if t.exists():
+            t.unlink()
+    except Exception:
+        pass
+    try:
+        h = _halfhour_trace_path()
+        if h.exists():
+            h.unlink()
+    except Exception:
+        pass
+
+
 def append_trace(record: dict) -> None:
     try:
         p = _trace_path()
