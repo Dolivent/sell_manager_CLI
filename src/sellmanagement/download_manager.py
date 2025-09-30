@@ -54,7 +54,16 @@ class DownloadManager:
                     pass
             try:
                 # If an async bridge is available, schedule the async request there
-                if self._bridge is not None and getattr(self._bridge, 'ib', None) is not None:
+                bridge = self._bridge
+                if bridge is None:
+                    try:
+                        from .async_ib_bridge import get_global_bridge
+
+                        bridge = get_global_bridge(start=False)
+                    except Exception:
+                        bridge = None
+
+                if bridge is not None and getattr(bridge, 'ib', None) is not None:
                     try:
                         # build contract via ib_insync Stock in this thread
                         from ib_insync import Stock  # type: ignore
@@ -67,6 +76,7 @@ class DownloadManager:
                         rows = []
                         self._rl.on_failure(str(e))
                 else:
+                    # fallback to IBClient's download_daily (may use its own bridge)
                     rows = self._ib.download_daily(token, duration=duration)
 
                 # normalize before returning/persisting
@@ -95,14 +105,23 @@ class DownloadManager:
                 except Exception:
                     pass
             try:
+                bridge = self._bridge
+                if bridge is None:
+                    try:
+                        from .async_ib_bridge import get_global_bridge
+
+                        bridge = get_global_bridge(start=False)
+                    except Exception:
+                        bridge = None
+
                 # If an async bridge is available, schedule the async request there
-                if self._bridge is not None and getattr(self._bridge, 'ib', None) is not None:
+                if bridge is not None and getattr(bridge, 'ib', None) is not None:
                     try:
                         from ib_insync import Stock  # type: ignore
                         ex, sym = token.split(':', 1) if ':' in token else ('SMART', token)
                         contract = Stock(sym, ex, 'USD')
-                        coro = self._bridge.ib.reqHistoricalDataAsync(contract, endDateTime='', durationStr=duration, barSizeSetting='30 mins', whatToShow='TRADES', useRTH=True)
-                        rows = self._bridge.run_coroutine_and_wait(coro, timeout=20)
+                        coro = bridge.ib.reqHistoricalDataAsync(contract, endDateTime='', durationStr=duration, barSizeSetting='30 mins', whatToShow='TRADES', useRTH=True)
+                        rows = bridge.run_coroutine_and_wait(coro, timeout=20)
                     except Exception as e:
                         rows = []
                         self._rl.on_failure(str(e))

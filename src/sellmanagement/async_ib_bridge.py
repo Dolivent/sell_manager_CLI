@@ -186,3 +186,23 @@ class AsyncIBBridge:
             raise
 
 
+# Module-level global bridge (lazy)
+_GLOBAL_BRIDGE: Optional[AsyncIBBridge] = None
+
+
+def get_global_bridge(start: bool = True, **kwargs) -> Optional[AsyncIBBridge]:
+    """Return a global AsyncIBBridge singleton, starting it if necessary."""
+    global _GLOBAL_BRIDGE
+    if _GLOBAL_BRIDGE is None:
+        try:
+            _GLOBAL_BRIDGE = AsyncIBBridge(**kwargs)
+            if start:
+                try:
+                    _GLOBAL_BRIDGE.start()
+                except Exception:
+                    pass
+        except Exception:
+            _GLOBAL_BRIDGE = None
+    return _GLOBAL_BRIDGE
+
+
