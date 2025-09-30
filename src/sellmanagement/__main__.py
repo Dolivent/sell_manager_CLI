@@ -48,7 +48,7 @@ def _cmd_start(args: argparse.Namespace) -> None:
                 # print table-like output: ticker | last_close | MA(value) | distance_pct
                 print(f"\nMinute snapshot at {datetime.utcnow().isoformat()}")
                 # formatted table: aligned columns
-                hdr = f"{'ticker':20}{'last_close':>12}{'ma_value':>12}{'distance_pct':>14}{'assigned_ma':>16}"
+                hdr = f"{'ticker':20}{'last_close':>12}{'ma_value':>12}{'distance_pct':>14}{'assigned_ma':>16}{'tf':>6}"
                 print(hdr)
                 for r in rows:
                     tk = r.get('ticker') or ''
@@ -81,7 +81,8 @@ def _cmd_start(args: argparse.Namespace) -> None:
                             dist_s = str(distance)
 
                     am = r.get('assigned_ma') or '-'
-                    print(f"{tk:20}{last_s:>12}{ma_s:>12}{dist_s:>14}{am:>16}")
+                    tf = r.get('assigned_timeframe') or '-'
+                    print(f"{tk:20}{last_s:>12}{ma_s:>12}{dist_s:>14}{am:>16}{tf:>6}")
             except KeyboardInterrupt:
                 raise
             except Exception as e:

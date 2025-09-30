@@ -99,11 +99,17 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
                     except Exception:
                         distance_pct = None
 
+        tf_display = None
+        if ass:
+            tf = (ass.get('timeframe') or '1H').strip().upper()
+            tf_display = 'H' if tf in ("1H", "H", "HOURLY") else 'D'
+
         row = {
             "ts": ts,
             "ticker": tk,
             "assigned_type": ass.get('type') if ass else None,
             "assigned_length": int(ass.get('length')) if ass else None,
+            "assigned_timeframe": tf_display,
             "assigned_ma": f"{ass.get('type') or ''}({ass.get('length') or ''})" if ass else None,
             "ma_value": None if ma_value is None else float(ma_value),
             "last_close": None if last_close is None else float(last_close),
