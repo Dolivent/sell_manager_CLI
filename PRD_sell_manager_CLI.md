@@ -80,7 +80,13 @@
 
 1. Load Assigned MAs (first step)
    * Before connecting to IB, read the assigned-MA CSV at `config/assigned_ma.csv` mapping each ticker (in `[exchange]:[ticker]` format) to its assigned moving average and timeframe. The CSV columns should be: `ticker,type,length,timeframe` (for example: `NASDAQ:AAPL,SMA,50,1H`).
-   * If a live IB position exists that is not present in the CSV, print the missing tickers and require the user to add an assignment via the CLI (no automatic population). Use `sellmanagement assign TICKER TYPE LENGTH [--timeframe=1H|D]` to add entries.
+   * If a live IB position exists that is not present in the CSV, the app will prompt the user interactively, one ticker at a time, to select an assigned MA and timeframe. The interactive flow is:
+     1. Show the ticker token.
+     2. Prompt to choose MA family from a numbered list (e.g. 1) SMA, 2) EMA).
+     3. Prompt to enter MA length (default shown, e.g. 50).
+     4. Prompt to choose timeframe from a numbered list (e.g. 1) 1H, 2) D).
+     5. Persist the selection to `config/assigned_ma.csv` and continue to the next missing ticker.
+     This interactive assignment is the default at startup; it repeats until all missing tickers have assignments.
    * This file serves as the source of truth for which MA (and timeframe) is used when evaluating signals at runtime.
 2. Read config, set `dry-run=True` unless `--live` passed. Ensure `--client-id` unique and validate any CLI flags.
 3. Connect to IBG/TWS: `ib.connect(host, 4001, clientId=...)`.  **(port 4001 is the IBG/TWS SSL port)** . ([Interactive Brokers](https://www.interactivebrokers.com/download/IB-Host-and-Ports.pdf?utm_source=chatgpt.com "IB-Host-and-Ports.pdf"))
@@ -196,28 +202,28 @@
 
 **Milestone 2 — Historical downloader & cache**
 
-* File: `downloader.py`, `cache.py`. Implement async downloader with concurrency semaphore (configurable, default 32). Download daily + 30m and store in cache.
-* Small win: run start-up and see cached parquet files created.
+- ~~File: `downloader.py`, `cache.py`. Implement async downloader with concurrency semaphore (configurable, default 32). Download daily + 30m and store in cache.~~
+- ~~Small win: run start-up and see cached parquet files created.~~
 
 **Milestone 3 — Indicators & tables**
 
-* File: `indicators.py`. Compute SMA/EMA durations and cache results.
-* CLI: print per-ticker MA table showing distance to MAs.
+- ~~File: `indicators.py`. Compute SMA/EMA durations and cache results.~~
+- ~~CLI: print per-ticker MA table showing distance to MAs.~~
 
 **Milestone 4 — Minute updater**
 
-* File: `updater.py`. Implement minute scheduler and data merging. CLI shows updated tables every minute.
-* Small win: observe updates and printed messages.
+- ~~File: `updater.py`. Implement minute scheduler and data merging. CLI shows updated tables every minute.~~
+- ~~Small win: observe updates and printed messages.~~
 
 **Milestone 5 — Hourly evaluator & logging**
 
-* File: `signals.py`, `part_time_larry.py` (sample logger). Implement hourly evaluation and logging to `signals.log` (CSV/JSONL).
-* Small win: At top of hour, generate signal and append to `signals.log` (dry-run).
+- ~~File: `signals.py`, `part_time_larry.py` (sample logger). Implement hourly evaluation and logging to `signals.log` (CSV/JSONL).~~
+- ~~Small win: At top of hour, generate signal and append to `signals.log` (dry-run).~~
 
 **Milestone 6 — Order preparation & safety checks**
 
-* File: `orders.py`. Prepare orders and implement final checks (re-fetch positions, compare sizes). In dry-run no submit. Add `--live` gate.
-* Tests: mock IB and assert order prepared with exact size.
+- ~~File: `orders.py`. Prepare orders and implement final checks (re-fetch positions, compare sizes). In dry-run no submit. Add `--live` gate.~~
+- ~~Tests: mock IB and assert order prepared with exact size.~~
 
 **Milestone 7 — Integration tests & paper trading**
 

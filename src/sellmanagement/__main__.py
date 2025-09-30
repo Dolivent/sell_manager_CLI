@@ -15,6 +15,29 @@ def _cmd_start(args: argparse.Namespace) -> None:
 
     positions = ib.get_positions()
     print(f"Fetched {len(positions)} positions (dry-run={config.dry_run})")
+    # after fetching positions, print assignments table
+    try:
+        from .assign import get_assignments_list
+
+        rows = get_assignments_list()
+        if rows:
+            print("\nAssigned MAs:")
+            # compute column widths
+            hdr = ("Ticker", "Type", "Length", "Timeframe")
+            widths = [len(h) for h in hdr]
+            for r in rows:
+                widths[0] = max(widths[0], len(r.get('ticker', '')))
+                widths[1] = max(widths[1], len(r.get('type', '')))
+                widths[2] = max(widths[2], len(str(r.get('length', ''))))
+                widths[3] = max(widths[3], len(r.get('timeframe', '')))
+
+            fmt = f"{{:<{widths[0]}}}  {{:<{widths[1]}}}  {{:>{widths[2]}}}  {{:<{widths[3]}}}"
+            print(fmt.format(*hdr))
+            print("-" * (sum(widths) + 6))
+            for r in rows:
+                print(fmt.format(r.get('ticker', ''), r.get('type', ''), str(r.get('length', '')), r.get('timeframe', '')))
+    except Exception:
+        pass
     # report any missing assigned-MA entries; do NOT modify the CSV automatically
     try:
         normalized = ib.get_latest_positions_normalized()
@@ -27,10 +50,37 @@ def _cmd_start(args: argparse.Namespace) -> None:
             if token.upper() not in assignments:
                 missing.append(token)
         if missing:
-            print("Missing assigned MA entries for the following tickers (no auto-assignment performed):")
-            for m in missing:
-                print(f"  - {m}")
-            print("Use: `sellmanagement assign TICKER TYPE LENGTH [--timeframe=1H|D]` to add assignments")
+            print("Some positions are missing assigned MAs. Let's assign them interactively.")
+            # present numbered combinations of (MA family, timeframe, length)
+            families = ["SMA", "EMA"]
+            timeframes = ["1H", "D"]
+            lengths = [5, 10, 20, 50, 100, 150, 200]
+            combos = []
+            for fam in families:
+                for tf in timeframes:
+                    for L in lengths:
+                        combos.append((fam, tf, L))
+
+            for tok in missing:
+                while True:
+                    try:
+                        print(f"\nTicker: {tok}")
+                        print("Select MA assignment from the numbered list:")
+                        for i, (fam, tf, L) in enumerate(combos, start=1):
+                            print(f"  {i:2d}) {fam}({L}) {tf}")
+                        sel = input("Enter number for selection (default 14 -> SMA(50) 1H): ").strip()
+                        if sel == "":
+                            idx = 14  # default index maps to SMA(50) 1H (families order ensures this)
+                        else:
+                            idx = int(sel)
+                        if idx < 1 or idx > len(combos):
+                            raise ValueError("selection out of range")
+                        fam, tf, L = combos[idx - 1]
+                        set_assignment(tok, fam, int(L), timeframe=tf)
+                        print(f"Assigned {tok} -> {fam}({L}) {tf}")
+                        break
+                    except Exception as e:
+                        print(f"Invalid input: {e}. Please try again.")
     except Exception:
         pass
     ib.disconnect()

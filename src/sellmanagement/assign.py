@@ -89,6 +89,34 @@ def get_assignments() -> dict:
     return out
 
 
+def get_assignments_list() -> list:
+    """Return list of assignment rows in file order.
+
+    Each row is a dict with keys: ticker, type, length, timeframe.
+    """
+    _ensure_config_dir()
+    out: list = []
+    if not ASSIGNED_CSV.exists():
+        return out
+    with ASSIGNED_CSV.open("r", newline="") as f:
+        reader = csv.DictReader(f)
+        for r in reader:
+            t = (r.get("ticker") or "").strip()
+            if not t:
+                continue
+            try:
+                length = int((r.get("length") or "0").strip() or 0)
+            except Exception:
+                length = 0
+            out.append({
+                "ticker": t,
+                "type": (r.get("type") or "").strip().upper(),
+                "length": length,
+                "timeframe": (r.get("timeframe") or "1H").strip(),
+            })
+    return out
+
+
 def sync_assignments(tokens: Iterable[str], default_type: str = "SMA", default_length: int = 50, default_timeframe: str = "1H") -> dict:
     """Synchronize `assigned_ma.csv` to exactly the provided `tokens` list.
 
