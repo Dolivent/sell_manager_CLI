@@ -6,6 +6,9 @@ from typing import List, Dict, Any
 from .assign import get_assignments_list
 from .cache import merge_bars, _key_to_path, load_bars
 from .downloader import batch_download_daily
+from .download_manager import persist_halfhour_once
+from .aggregator import aggregate_and_persist_to_hour
+from .indicators import compute_sma_series_all, compute_ema_series_all
 from .trace import append_trace
 from .indicators import compute_sma_series_all, compute_ema_series_all
 
@@ -48,11 +51,23 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
         ass = assignments.get(tk, None)
         timeframe = (ass.get('timeframe') if ass else '1H') or '1H'
 
-        # if assignment is hourly, do NOT compute MA from daily data; require hourly cache
+        # perform quick half-hour updater (single 31-bar fetch) regardless — it will
+        # only persist into half-hour cache for daily assignments; for hourly
+        # assignments we'll still try to load hourly cache from existing files.
+        try:
+            persist_halfhour_once(ib_client, [tk], batch_size=1, batch_delay=0, duration="31 D")
+        except Exception:
+            append_trace({"event": "halfhour_persist_failed", "token": tk})
+
+        # if assignment is hourly, aggregate half-hours into hourly cache and load
         if timeframe.strip().upper() in ("1H", "H", "HOURLY"):
-            key = _make_key_from_ticker(tk, timeframe="1H")
-            # we do not merge `results` (daily) into hourly cache
-            bars = load_bars(key, limit=365)
+            half_key = f"{tk}:30m"
+            hour_key = f"{tk}:1h"
+            try:
+                aggregate_and_persist_to_hour(half_key, hour_key)
+            except Exception:
+                append_trace({"event": "aggregate_failed", "token": tk})
+            bars = load_bars(hour_key, limit=365)
         else:
             # daily timeframe: merge downloaded daily bars and load daily cache
             key = _make_key_from_ticker(tk, timeframe="1D")
@@ -85,14 +100,24 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
             if tf in ("1H", "H", "HOURLY") and not bars:
                 ma_value = None
             else:
+                # compute on the loaded bars' close series
+                series_values = []
+                for b in bars:
+                    try:
+                        c = b.get('Close')
+                        series_values.append(float(c) if c is not None else 0.0)
+                    except Exception:
+                        series_values.append(0.0)
+
                 if ttype == 'SMA':
-                    sma_map = compute_sma_series_all(closes, [l])
+                    sma_map = compute_sma_series_all(series_values, [l])
                     series = sma_map.get(l, [])
                     ma_value = series[-1] if series else None
                 else:
-                    ema_map = compute_ema_series_all(closes, [l])
+                    ema_map = compute_ema_series_all(series_values, [l])
                     series = ema_map.get(l, [])
                     ma_value = series[-1] if series else None
+
                 if ma_value is not None and last_close is not None:
                     try:
                         distance_pct = ((last_close - ma_value) / ma_value) * 100.0 if ma_value != 0 else None

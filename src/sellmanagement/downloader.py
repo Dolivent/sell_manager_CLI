@@ -45,3 +45,31 @@ def _safe_download_daily(ib_client, token: str, duration: str) -> List[dict]:
         return ib_client.download_daily(token, duration=duration) or []
     except Exception:
         return []
+
+
+def batch_download_halfhours(ib_client, tickers: Iterable[str], batch_size: int = 32, batch_delay: float = 6.0, duration: str = "31 D", max_bars: int | None = 31) -> Dict[str, List[dict]]:
+    """Download half-hour (30m) bars in batches. Returns mapping ticker -> rows (newest last).
+
+    `max_bars` can be used to trim the returned rows to the most recent N bars.
+    """
+    tick_list = list(tickers)
+    out: Dict[str, List[dict]] = {}
+    if not tick_list:
+        return out
+
+    for batch in _chunks(tick_list, batch_size):
+        append_trace({"event": "batch_halfhour_chunk_start", "batch": batch, "batch_size": len(batch)})
+        for tk in batch:
+            rows = _safe_download_halfhours(ib_client, tk, duration, max_bars)
+            out[tk] = rows or []
+            append_trace({"event": "batch_halfhour_item_done", "token": tk, "rows": len(rows) if rows else 0})
+        if batch_delay and batch_delay > 0 and batch is not tick_list[-len(batch) :]:
+            time.sleep(batch_delay)
+    return out
+
+
+def _safe_download_halfhours(ib_client, token: str, duration: str, max_bars: int | None = 31) -> List[dict]:
+    try:
+        return ib_client.download_halfhours(token, duration=duration, max_bars=max_bars) or []
+    except Exception:
+        return []

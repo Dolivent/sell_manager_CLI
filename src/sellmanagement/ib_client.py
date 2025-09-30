@@ -136,5 +136,50 @@ class IBClient:
             return []
 
     # Half-hour downloads removed in simplified mode
+    def download_halfhours(self, token: str, duration: str = "31 D", max_bars: int | None = 31):
+        """Blocking download of 30-minute bars for `token`.
+
+        Returns list of dict rows (newest last) or empty list on failure.
+        """
+        try:
+            from ib_insync import Stock  # type: ignore
+        except Exception:
+            try:
+                from .trace import append_trace
+                append_trace({"event": "download_halfhours_import_error", "token": token})
+            except Exception:
+                pass
+            return []
+
+        ex, sym = self._parse_token(token)
+        if not sym:
+            return []
+        try:
+            contract = Stock(sym, ex, 'USD')
+            try:
+                bars = self.ib.run(self.ib.reqHistoricalDataAsync(contract, endDateTime='', durationStr=duration, barSizeSetting='30 mins', whatToShow='TRADES', useRTH=True))
+            except Exception:
+                bars = []
+
+            out = []
+            for b in bars:
+                out.append({'Date': getattr(b, 'date', None), 'Open': getattr(b, 'open', None), 'High': getattr(b, 'high', None), 'Low': getattr(b, 'low', None), 'Close': getattr(b, 'close', None), 'Volume': getattr(b, 'volume', None)})
+            if max_bars is not None and len(out) > max_bars:
+                out = out[-max_bars:]
+            try:
+                from .trace import append_trace
+                first_date = out[0].get('Date') if out else None
+                last_date = out[-1].get('Date') if out else None
+                append_trace({"event": "download_halfhours_ok", "token": token, "rows": len(out), "first_date": first_date, "last_date": last_date})
+            except Exception:
+                pass
+            return out
+        except Exception as e_all:
+            try:
+                from .trace import append_trace
+                append_trace({"event": "download_halfhours_exception", "token": token, "error": str(e_all)})
+            except Exception:
+                pass
+            return []
 
 
