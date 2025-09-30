@@ -79,9 +79,9 @@
 ### Start-up (exact sequence)
 
 1. Load Assigned MAs (first step)
-   * Before connecting to IB, read the assigned-MA CSV at `config/assigned_ma.csv` mapping each ticker (in `[exchange]:[ticker]` format) to its assigned moving average. The CSV columns should be: `ticker,type,length` (for example: `NASDAQ:AAPL,SMA,50`).
-   * If a live IB position exists that is not present in the CSV, prompt the user interactively to assign an MA, or (if running unattended) assign and persist a default (e.g. `SMA,50`) back to `config/assigned_ma.csv` so the assignment is durable for future runs.
-   * This file serves as the source of truth for which MA is used when evaluating signals at runtime.
+   * Before connecting to IB, read the assigned-MA CSV at `config/assigned_ma.csv` mapping each ticker (in `[exchange]:[ticker]` format) to its assigned moving average and timeframe. The CSV columns should be: `ticker,type,length,timeframe` (for example: `NASDAQ:AAPL,SMA,50,1H`).
+   * If a live IB position exists that is not present in the CSV, print the missing tickers and require the user to add an assignment via the CLI (no automatic population). Use `sellmanagement assign TICKER TYPE LENGTH [--timeframe=1H|D]` to add entries.
+   * This file serves as the source of truth for which MA (and timeframe) is used when evaluating signals at runtime.
 2. Read config, set `dry-run=True` unless `--live` passed. Ensure `--client-id` unique and validate any CLI flags.
 3. Connect to IBG/TWS: `ib.connect(host, 4001, clientId=...)`.  **(port 4001 is the IBG/TWS SSL port)** . ([Interactive Brokers](https://www.interactivebrokers.com/download/IB-Host-and-Ports.pdf?utm_source=chatgpt.com "IB-Host-and-Ports.pdf"))
 4. Call `positions = ib.positions()` (or `reqPositionsMulti` for specific groups). Also fetch `openOrders = ib.openOrders()`. ([Interactive Brokers](https://interactivebrokers.github.io/tws-api/positions.html?utm_source=chatgpt.com "TWS API v9.72+: Positions - Interactive Brokers - API Software"))

@@ -1,6 +1,6 @@
 from .config import Config
 from .ib_client import IBClient
-from .assign import set_assignment
+from .assign import set_assignment, get_assignments, sync_assignments
 import argparse
 from typing import Optional
 
@@ -15,6 +15,24 @@ def _cmd_start(args: argparse.Namespace) -> None:
 
     positions = ib.get_positions()
     print(f"Fetched {len(positions)} positions (dry-run={config.dry_run})")
+    # report any missing assigned-MA entries; do NOT modify the CSV automatically
+    try:
+        normalized = ib.get_latest_positions_normalized()
+        assignments = get_assignments()
+        missing = []
+        for p in normalized:
+            token = (p.get('token') or '').strip()
+            if not token:
+                continue
+            if token.upper() not in assignments:
+                missing.append(token)
+        if missing:
+            print("Missing assigned MA entries for the following tickers (no auto-assignment performed):")
+            for m in missing:
+                print(f"  - {m}")
+            print("Use: `sellmanagement assign TICKER TYPE LENGTH [--timeframe=1H|D]` to add assignments")
+    except Exception:
+        pass
     ib.disconnect()
 
 
@@ -44,6 +62,7 @@ def main(argv: Optional[list] = None) -> None:
     p_assign.add_argument("ticker", help="Ticker token in [exchange]:[ticker] format, e.g. NASDAQ:AAPL")
     p_assign.add_argument("type", help="MA type: SMA or EMA")
     p_assign.add_argument("length", help="MA length (integer)")
+    p_assign.add_argument("--timeframe", default="1H", help="Timeframe for MA (e.g. 1H or D). Default: 1H")
 
     args = parser.parse_args(argv)
 
