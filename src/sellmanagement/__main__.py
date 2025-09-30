@@ -38,6 +38,87 @@ def _cmd_start(args: argparse.Namespace) -> None:
                 print(fmt.format(r.get('ticker', ''), r.get('type', ''), str(r.get('length', '')), r.get('timeframe', '')))
     except Exception:
         pass
+    # start minute updater to keep process running and recompute indicators
+    try:
+        from .updater import MinuteUpdater
+        from .cache import load_bars
+        from .indicators import simple_moving_average, exponential_moving_average
+        from .signals import append_signal, decide
+
+        def _extract_closes(rows):
+            out = []
+            for r in rows:
+                try:
+                    if isinstance(r, dict):
+                        v = r.get('close') or r.get('Close') or r.get('ClosePrice') or r.get('closePrice')
+                    else:
+                        v = getattr(r, 'close', None) or getattr(r, 'Close', None)
+                    if v is None:
+                        continue
+                    out.append(float(v))
+                except Exception:
+                    continue
+            return out
+
+        def fetch_daily(ticker: str):
+            rows = load_bars(f"{ticker}:1d")
+            return _extract_closes(rows)
+
+        def fetch_hourly(ticker: str):
+            # try 1h cache first, else aggregate 30m
+            rows = load_bars(f"{ticker}:1h")
+            if rows:
+                return _extract_closes(rows)
+            halfs = load_bars(f"{ticker}:30m")
+            return _extract_closes(halfs)
+
+        assignments_map = get_assignments()
+
+        def on_update_handler(ticker, daily_vals, hourly_vals):
+            try:
+                assign = assignments_map.get(ticker.upper())
+                if not assign:
+                    return
+                fam = assign.get('type', 'SMA')
+                length = int(assign.get('length') or 0)
+                timeframe = assign.get('timeframe', '1H')
+                values = hourly_vals if timeframe == '1H' else daily_vals
+                if not values:
+                    return
+                close = float(values[-1])
+                # only evaluate at top of hour
+                from datetime import datetime
+                now = datetime.now()
+                if now.minute != 0:
+                    return
+                dec = decide(close, fam, length, values)
+                entry = {
+                    'symbol': ticker,
+                    'timeframe': timeframe,
+                    'family': fam,
+                    'length': length,
+                    'close': close,
+                    'ma': dec.get('ma_value'),
+                    'decision': dec.get('decision'),
+                }
+                append_signal(entry)
+            except Exception:
+                pass
+
+        tickers = [r.get('ticker') for r in get_assignments_list()]
+        if tickers:
+            upd = MinuteUpdater(fetch_daily, fetch_hourly, on_update_handler, tickers=tickers)
+            upd.start()
+            print("Minute updater started — running in background. Press Ctrl+C to exit.")
+            try:
+                import time
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                upd.stop()
+                print("Stopped.")
+    except Exception:
+        pass
     # report any missing assigned-MA entries; do NOT modify the CSV automatically
     try:
         normalized = ib.get_latest_positions_normalized()
