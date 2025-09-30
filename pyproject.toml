@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sellmanagement"
+version = "0.0.1"
+description = "CLI for monitoring IBKR positions and preparing sell orders when positions cross below assigned moving averages."
+authors = [ { name = "" } ]
+dependencies = [
+    "ib_insync>=0.9.86",
+    "pandas>=1.5",
+    "numpy>=1.24",
+]
+
+[tool.poetry.scripts]
+sellmanagement = "sellmanagement.__main__:main"
+
+
