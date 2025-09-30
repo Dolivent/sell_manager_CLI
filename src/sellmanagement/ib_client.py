@@ -1,6 +1,5 @@
 from ib_insync import IB
 from typing import List
-from typing import Optional
 
 
 class IBClient:
@@ -9,13 +8,6 @@ class IBClient:
         self.port = port
         self.client_id = client_id
         self.ib = IB()
-        # attach or create a global async bridge so async coroutines are scheduled
-        try:
-            from .async_ib_bridge import get_global_bridge
-
-            self._bridge = get_global_bridge()
-        except Exception:
-            self._bridge = None
 
     def connect(self) -> bool:
         try:
@@ -110,41 +102,28 @@ class IBClient:
             return []
         try:
             contract = Stock(sym, ex, 'USD')
-            # Prefer to schedule on global AsyncIBBridge if available to ensure
-            # coroutine is executed on the single bridge event loop rather than
-            # accidentally creating an unawaited coroutine in worker threads.
+            # Perform a synchronous historical data request on this thread
             try:
-                from .async_ib_bridge import get_global_bridge
-                bridge = get_global_bridge(start=True, host=self.host, port=self.port, client_id=self.client_id)
+                # ib_insync's reqHistoricalData is async-backed; call the Async variant and wait via IB.run
+                bars = self.ib.run(self.ib.reqHistoricalDataAsync(contract, endDateTime='', durationStr=duration, barSizeSetting='1 day', whatToShow='TRADES', useRTH=True))
             except Exception:
-                bridge = None
-
-            if bridge and getattr(bridge, 'ib', None) is not None and hasattr(bridge.ib, 'reqHistoricalDataAsync'):
-                try:
-                    try:
-                        from .trace import append_trace
-                        append_trace({"event": "download_daily_using_bridge", "token": token})
-                    except Exception:
-                        pass
-                    coro = bridge.ib.reqHistoricalDataAsync(contract, endDateTime='', durationStr=duration, barSizeSetting='1 day', whatToShow='TRADES', useRTH=True)
-                    bars = bridge.run_coroutine_and_wait(coro, timeout=20)
-                except Exception:
-                    bars = []
-                else:
-                    try:
-                        from .trace import append_trace
-                        append_trace({"event": "download_daily_no_bridge", "token": token, "note": "no bridge available - skipping"})
-                    except Exception:
-                        pass
-                    # Do not call async-capable IB methods from worker threads; return empty
-                    return []
+                bars = []
 
             out = []
             for b in bars:
                 out.append({'Date': getattr(b, 'date', None), 'Open': getattr(b, 'open', None), 'High': getattr(b, 'high', None), 'Low': getattr(b, 'low', None), 'Close': getattr(b, 'close', None), 'Volume': getattr(b, 'volume', None)})
             try:
                 from .trace import append_trace
-                append_trace({"event": "download_daily_ok", "token": token, "rows": len(out)})
+                # prepare a small sample to avoid logging huge payloads
+                sample = []
+                for r in out[:3]:
+                    try:
+                        sample.append({"Date": r.get('Date'), "Close": r.get('Close')})
+                    except Exception:
+                        sample.append(None)
+                first_date = out[0].get('Date') if out else None
+                last_date = out[-1].get('Date') if out else None
+                append_trace({"event": "download_daily_ok", "token": token, "rows": len(out), "first_date": first_date, "last_date": last_date, "sample": sample})
             except Exception:
                 pass
             return out
@@ -156,66 +135,6 @@ class IBClient:
                 pass
             return []
 
-    def download_halfhours(self, token: str, duration: str = "31 D"):
-        """Blocking download of 30-minute bars for `token`.
-
-        Returns list of dict rows or empty list on failure.
-        """
-        try:
-            from ib_insync import Stock  # type: ignore
-        except Exception as e:
-            try:
-                from .trace import append_trace
-                append_trace({"event": "download_half_import_error", "token": token, "error": str(e)})
-            except Exception:
-                pass
-            return []
-
-        ex, sym = self._parse_token(token)
-        if not sym:
-            return []
-        try:
-            contract = Stock(sym, ex, 'USD')
-            try:
-                from .async_ib_bridge import get_global_bridge
-                bridge = get_global_bridge(start=True, host=self.host, port=self.port, client_id=self.client_id)
-            except Exception:
-                bridge = None
-
-            if bridge and getattr(bridge, 'ib', None) is not None and hasattr(bridge.ib, 'reqHistoricalDataAsync'):
-                try:
-                    try:
-                        from .trace import append_trace
-                        append_trace({"event": "download_half_using_bridge", "token": token})
-                    except Exception:
-                        pass
-                    coro = bridge.ib.reqHistoricalDataAsync(contract, endDateTime='', durationStr=duration, barSizeSetting='30 mins', whatToShow='TRADES', useRTH=True)
-                    bars = bridge.run_coroutine_and_wait(coro, timeout=20)
-                except Exception:
-                    bars = []
-            else:
-                try:
-                    from .trace import append_trace
-                    append_trace({"event": "download_half_no_bridge", "token": token, "note": "no bridge available - skipping"})
-                except Exception:
-                    pass
-                return []
-
-            out = []
-            for b in bars:
-                out.append({'Date': getattr(b, 'date', None), 'Open': getattr(b, 'open', None), 'High': getattr(b, 'high', None), 'Low': getattr(b, 'low', None), 'Close': getattr(b, 'close', None), 'Volume': getattr(b, 'volume', None)})
-            try:
-                from .trace import append_trace
-                append_trace({"event": "download_halfhours_ok", "token": token, "rows": len(out)})
-            except Exception:
-                pass
-            return out
-        except Exception as e_all:
-            try:
-                from .trace import append_trace
-                append_trace({"event": "download_halfhours_exception", "token": token, "error": str(e_all)})
-            except Exception:
-                pass
-            return []
+    # Half-hour downloads removed in simplified mode
 
 
