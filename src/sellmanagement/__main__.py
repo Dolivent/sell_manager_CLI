@@ -2,6 +2,8 @@ from .config import Config
 from .ib_client import IBClient
 from .assign import set_assignment, get_assignments_list
 from .download_manager import persist_batch_daily
+from datetime import datetime
+from .minute_snapshot import run_minute_snapshot
 import argparse
 from typing import Optional
 
@@ -32,7 +34,62 @@ def _cmd_start(args: argparse.Namespace) -> None:
     except Exception as e:
         print(f"Batch download failed: {e}")
 
-    ib.disconnect()
+    # Start a continuous minute-aligned loop: run snapshot at top of every minute
+    try:
+        print("Entering minute snapshot loop. Press Ctrl+C to stop.")
+        import time
+        while True:
+            # wait until next top of minute
+            now = datetime.utcnow()
+            seconds_till_next = 60 - now.second - (now.microsecond / 1_000_000)
+            time.sleep(seconds_till_next)
+            try:
+                rows = run_minute_snapshot(ib, tickers, concurrency=getattr(config, 'batch_size', 32))
+                # print table-like output: ticker | last_close | MA(value) | distance_pct
+                print(f"\nMinute snapshot at {datetime.utcnow().isoformat()}")
+                # formatted table: aligned columns
+                hdr = f"{'ticker':20}{'last_close':>12}{'ma_value':>12}{'distance_pct':>14}{'assigned_ma':>16}"
+                print(hdr)
+                for r in rows:
+                    tk = r.get('ticker') or ''
+                    last_close = r.get('last_close')
+                    ma_value = r.get('ma_value')
+                    distance = r.get('distance_pct')
+
+                    if last_close is None:
+                        last_s = '-' 
+                    else:
+                        try:
+                            last_s = f"{float(last_close):.2f}"
+                        except Exception:
+                            last_s = str(last_close)
+
+                    if ma_value is None:
+                        ma_s = '-'
+                    else:
+                        try:
+                            ma_s = f"{float(ma_value):.2f}"
+                        except Exception:
+                            ma_s = str(ma_value)
+
+                    if distance is None:
+                        dist_s = '-'
+                    else:
+                        try:
+                            dist_s = f"{float(distance):.1f}%"
+                        except Exception:
+                            dist_s = str(distance)
+
+                    am = r.get('assigned_ma') or '-'
+                    print(f"{tk:20}{last_s:>12}{ma_s:>12}{dist_s:>14}{am:>16}")
+            except KeyboardInterrupt:
+                raise
+            except Exception as e:
+                print(f"Minute snapshot failed: {e}")
+    except KeyboardInterrupt:
+        print("Shutting down...")
+    finally:
+        ib.disconnect()
 
 
 def _cmd_assign(args: argparse.Namespace) -> None:

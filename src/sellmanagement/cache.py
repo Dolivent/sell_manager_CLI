@@ -81,3 +81,53 @@ def load_bars(key: str, limit: int | None = None) -> List[Any]:
     return out[-limit:]
 
 
+def write_bars(key: str, bars: Iterable[dict]) -> None:
+    """Overwrite the cache file for `key` with the provided bars.
+
+    This writes all items in `bars` (iterable of dict) to the file, replacing
+    any existing content. Use with care.
+    """
+    _ensure_cache_dir()
+    p = _key_to_path(key)
+    with p.open("w", encoding="utf-8") as f:
+        for b in bars:
+            try:
+                f.write(json.dumps(b, ensure_ascii=False, default=_default_serializer) + "\n")
+            except Exception:
+                try:
+                    f.write(json.dumps(str(b), ensure_ascii=False) + "\n")
+                except Exception:
+                    continue
+
+
+def merge_bars(key: str, new_bars: Iterable[dict]) -> None:
+    """Merge `new_bars` into existing cache for `key`.
+
+    Matching is done by the `Date` field: new items replace existing items with
+    the same `Date`. The final file is sorted by `Date` in ascending order (if
+    Date values are comparable as strings).
+    """
+    # load existing
+    existing = load_bars(key)
+    # build map by Date
+    by_date: dict = {}
+    for r in existing:
+        d = r.get("Date")
+        if d is None:
+            # use raw string fallback
+            continue
+        by_date[str(d)] = r
+
+    # incorporate new bars
+    for nb in new_bars:
+        d = nb.get("Date")
+        if d is None:
+            # skip items without date
+            continue
+        by_date[str(d)] = nb
+
+    # sort by date key (as string) and write back
+    merged = [by_date[k] for k in sorted(by_date.keys())]
+    write_bars(key, merged)
+
+

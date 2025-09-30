@@ -203,39 +203,39 @@
 
 **Milestone 0 — Repo & CI**
 
-- ~~Repo skeleton, `pyproject.toml`, basic README, GitHub Actions running tests (empty tests pass).~~
-- ~~Add `Makefile` with common commands.~~
+- Repo skeleton, `pyproject.toml`, basic README, GitHub Actions running tests (empty tests pass).
+- Add `Makefile` with common commands.
 
 **Milestone 1 — IB connection & positions (small win)**
 
-- ~~File: `ib_client.py` — connect/disconnect + fetch positions and open orders (dry-run).~~
-- ~~CLI command: `sellmanagement start --dry-run` prints positions table.~~
-- ~~Tests: unit test that `ib_client` returns positions using a mocked IB object.~~
+- File: `ib_client.py` — connect/disconnect + fetch positions and open orders (dry-run).
+- CLI command: `sellmanagement start --dry-run` prints positions table.
+- Tests: unit test that `ib_client` returns positions using a mocked IB object.
 
 **Milestone 2 — Historical downloader & cache**
 
-- ~~File: `downloader.py`, `cache.py`. Implement async downloader with concurrency semaphore (configurable, default 32). Download daily + 30m and store in cache.~~
-- ~~Small win: run start-up and see cached parquet files created.~~
+- File: `downloader.py`, `cache.py`. Implement async downloader with concurrency semaphore (configurable, default 32). Download daily + 30m and store in cache.
+- Small win: run start-up and see cached parquet files created.
 
 **Milestone 3 — Indicators & tables**
 
-- ~~File: `indicators.py`. Compute SMA/EMA durations and cache results.~~
-- ~~CLI: print per-ticker MA table showing distance to MAs.~~
+- File: `indicators.py`. Compute SMA/EMA durations and cache results.
+- CLI: print per-ticker MA table showing distance to MAs.
 
 **Milestone 4 — Minute updater**
 
-- ~~File: `updater.py`. Implement minute scheduler and data merging. CLI shows updated tables every minute.~~
-- ~~Small win: observe updates and printed messages.~~
+- File: `updater.py`. Implement minute scheduler and data merging. CLI shows updated tables every minute.
+- Small win: observe updates and printed messages.
 
 **Milestone 5 — Hourly evaluator & logging**
 
-- ~~File: `signals.py`, `part_time_larry.py` (sample logger). Implement hourly evaluation and logging to `signals.log` (CSV/JSONL).~~
-- ~~Small win: At top of hour, generate signal and append to `signals.log` (dry-run).~~
+- File: `signals.py`, `part_time_larry.py` (sample logger). Implement hourly evaluation and logging to `signals.log` (CSV/JSONL).
+- Small win: At top of hour, generate signal and append to `signals.log` (dry-run).
 
 **Milestone 6 — Order preparation & safety checks**
 
-- ~~File: `orders.py`. Prepare orders and implement final checks (re-fetch positions, compare sizes). In dry-run no submit. Add `--live` gate.~~
-- ~~Tests: mock IB and assert order prepared with exact size.~~
+- File: `orders.py`. Prepare orders and implement final checks (re-fetch positions, compare sizes). In dry-run no submit. Add `--live` gate.
+- Tests: mock IB and assert order prepared with exact size.
 
 **Milestone 7 — Integration tests & paper trading**
 
