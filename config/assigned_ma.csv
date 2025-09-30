@@ -1,0 +1,6 @@
+ticker,type,length
+NASDAQ:AAPL,SMA,50
+NYSE:IBM,EMA,200
+NASDAQ:MSFT,SMA,20
+
+
