@@ -100,14 +100,52 @@ class DownloadQueue:
             except Exception:
                 continue
             try:
+                # Try to form a batch of tokens for efficiency
+                batch_size = 32
+                tokens = [token]
+                if kind in ("daily", "half"):
+                    # gather additional items of same kind without blocking
+                    try:
+                        while len(tokens) < batch_size:
+                            tkn, knd = self._queue.get_nowait()
+                            if knd == kind:
+                                tokens.append(tkn)
+                            else:
+                                # re-queue mismatched kind
+                                self._queue.put((tkn, knd))
+                                break
+                    except Exception:
+                        pass
+
                 if kind == "daily":
-                    rows = self._dm.download_daily(token)
-                    if rows:
-                        persist_bars(f"{token}:1d", rows)
+                    # batch daily downloads
+                    from .downloader import batch_download_daily
+
+                    results = batch_download_daily(self._ib, tokens, batch_size=batch_size, batch_delay=6.0, duration="1 Y")
+                    for tk, rows in results.items():
+                        if rows:
+                            persist_bars(f"{tk}:1d", rows)
+                elif kind == "half":
+                    # batch half-hour backfills (each ticker backfills sequentially internally)
+                    from .downloader import batch_download_daily, backfill_halfhours_sequential
+                    # We'll process tokens sequentially but in this batch worker loop to limit bursts
+                    for tk in tokens:
+                        try:
+                            rows = backfill_halfhours_sequential(self._ib, tk, target_bars=31)
+                            if rows:
+                                persist_bars(f"{tk}:30m", rows)
+                        except Exception:
+                            logger.exception("failed backfill for %s", tk)
                 else:
-                    rows = self._dm.download_halfhours(token)
-                    if rows:
-                        persist_bars(f"{token}:30m", rows)
+                    # fallback single-item processing
+                    if kind == 'daily':
+                        rows = self._dm.download_daily(token)
+                        if rows:
+                            persist_bars(f"{token}:1d", rows)
+                    else:
+                        rows = self._dm.download_halfhours(token)
+                        if rows:
+                            persist_bars(f"{token}:30m", rows)
             except Exception:
                 logger.exception("Download worker failed for %s %s", token, kind)
             finally:

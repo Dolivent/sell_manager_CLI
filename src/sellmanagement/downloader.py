@@ -1,70 +1,85 @@
-"""Asynchronous downloader wrapper that runs blocking IB calls in a thread.
+"""Downloader helpers.
 
-This module provides `download_historical_batch` which accepts a sequence
-of ticker tokens and downloads daily and half-hour bars using a provided
-IB client. It uses a concurrency semaphore to limit parallelism.
+Implements batch daily downloads (concurrent batches of N with pause between)
+and sequential half-hour backfill per-ticker until a target number of bars is
+retrieved. These are synchronous helpers that call into the provided IB
+client (which should provide `download_daily(token, duration)` and
+`download_halfhours(token, duration)`).
 """
-import asyncio
-from asyncio import Semaphore
-from concurrent.futures import ThreadPoolExecutor
-from typing import Iterable, Tuple, List, Any
-
-from .cache import persist_bars
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Iterable, List, Dict, Any
+import time
+import math
 
 
-DEFAULT_CONCURRENCY = 8
+def _chunks(seq: List[str], n: int):
+    for i in range(0, len(seq), n):
+        yield seq[i : i + n]
 
 
-async def _run_in_thread(func, /, *args, **kwargs):
-    loop = asyncio.get_running_loop()
-    with ThreadPoolExecutor(max_workers=4) as ex:
-        return await loop.run_in_executor(ex, lambda: func(*args, **kwargs))
+def batch_download_daily(ib_client, tickers: Iterable[str], batch_size: int = 32, batch_delay: float = 6.0, duration: str = "1 Y") -> Dict[str, List[dict]]:
+    """Download daily data in batches.
 
+    - Splits tickers into batches of `batch_size`.
+    - For each batch, issues concurrent download requests (threadpool) for
+      daily data (`duration`), waits for all to complete, persists or returns
+      results, then sleeps `batch_delay` seconds before starting next batch.
 
-def _download_for_ib(ib, ticker: str) -> Tuple[str, List[dict], List[dict]]:
-    """Blocking download using IB client. Returns (ticker, daily_bars, halfhour_bars).
-
-    This function assumes `ib` exposes `download_symbol_daily` and
-    `download_symbol_halfhours` or similar wrappers. If using `ib_insync`, adapt
-    callers to pass appropriate wrappers.
+    Returns mapping ticker -> rows (empty list on failure).
     """
-    # adaptors: prefer orchestrator-like api if present
+    tick_list = list(tickers)
+    out: Dict[str, List[dict]] = {}
+    if not tick_list:
+        return out
+
+    # Use a thread pool sized to batch_size (bounded concurrency per batch)
+    for batch in _chunks(tick_list, batch_size):
+        with ThreadPoolExecutor(max_workers=min(len(batch), batch_size)) as ex:
+            futures = {ex.submit(lambda tk=tk: _safe_download_daily(ib_client, tk, duration), tk): tk for tk in batch}
+            for fut in as_completed(futures):
+                tk = futures[fut]
+                try:
+                    rows = fut.result()
+                except Exception:
+                    rows = []
+                out[tk] = rows or []
+        # pause between batches
+        if batch_delay and batch_delay > 0 and batch is not tick_list[-len(batch) :]:
+            time.sleep(batch_delay)
+    return out
+
+
+def _safe_download_daily(ib_client, token: str, duration: str) -> List[dict]:
     try:
-        # daily
-        meta_d, daily = ib.download_symbol_daily(ticker)
+        return ib_client.download_daily(token, duration=duration) or []
     except Exception:
-        daily = []
-    try:
-        meta_h, halfhours = ib.download_symbol_halfhours(ticker)
-    except Exception:
-        halfhours = []
-    return ticker, daily, halfhours
+        return []
 
 
-async def download_historical_batch(ib, tickers: Iterable[str], concurrency: int = DEFAULT_CONCURRENCY) -> List[Tuple[str, List[dict], List[dict]]]:
-    sem = Semaphore(concurrency)
-    results: List[Tuple[str, List[dict], List[dict]]] = []
+def backfill_halfhours_sequential(ib_client, token: str, target_bars: int = 31, durations: Iterable[str] = None) -> List[dict]:
+    """Sequentially backfill 30-minute bars for a ticker until `target_bars` obtained.
 
-    async def worker(tk: str):
-        async with sem:
-            # use thread-based executor for blocking IB calls
-            r = await _run_in_thread(_download_for_ib, ib, tk)
-            # persist to cache quickly (ndjson)
-            t, daily, halfs = r
-            if daily:
-                persist_bars(f"{t}:1d", [dict(b) for b in daily])
-            if halfs:
-                persist_bars(f"{t}:30m", [dict(b) for b in halfs])
-            return r
-
-    tasks = [asyncio.create_task(worker(tk)) for tk in tickers]
-    for t in asyncio.as_completed(tasks):
+    Strategy:
+    - Request increasing durations until we collect at least target_bars.
+    - Persisting and aggregation handled by caller.
+    - Returns list of bars (ordered oldest->newest) up to at least target_bars (may return fewer).
+    """
+    if durations is None:
+        durations = ["2 D", "7 D", "14 D", "31 D", "90 D", "180 D"]
+    collected: List[dict] = []
+    for d in durations:
         try:
-            r = await t
-            results.append(r)
+            rows = ib_client.download_halfhours(token, duration=d) or []
         except Exception:
-            # swallow per-symbol failures but continue
+            rows = []
+        if not rows:
             continue
-    return results
+        # rows assumed ordered oldest->newest by provider; if not, caller should normalize
+        collected = rows
+        if len(collected) >= target_bars:
+            # return last `target_bars` rows (most recent)
+            return collected[-target_bars:]
+    # not enough even after longest duration, return whatever we have
+    return collected
 
 
