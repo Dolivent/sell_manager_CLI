@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Iterable, List, Dict, Any
 import time
 import math
+from .trace import append_trace
 
 
 def _chunks(seq: List[str], n: int):
@@ -34,6 +35,7 @@ def batch_download_daily(ib_client, tickers: Iterable[str], batch_size: int = 32
 
     # Use a thread pool sized to batch_size (bounded concurrency per batch)
     for batch in _chunks(tick_list, batch_size):
+        append_trace({"event": "batch_chunk_start", "batch": batch, "batch_size": len(batch)})
         with ThreadPoolExecutor(max_workers=min(len(batch), batch_size)) as ex:
             futures = {ex.submit(lambda tk=tk: _safe_download_daily(ib_client, tk, duration), tk): tk for tk in batch}
             for fut in as_completed(futures):
@@ -43,6 +45,7 @@ def batch_download_daily(ib_client, tickers: Iterable[str], batch_size: int = 32
                 except Exception:
                     rows = []
                 out[tk] = rows or []
+                append_trace({"event": "batch_item_done", "token": tk, "rows": len(rows) if rows else 0})
         # pause between batches
         if batch_delay and batch_delay > 0 and batch is not tick_list[-len(batch) :]:
             time.sleep(batch_delay)

@@ -98,6 +98,18 @@
    * Use concurrency semaphore (default `32`) and batching to avoid pacing violations. Merge 30m → hourly.
    * On receipt, cache raw bars and computed indicators.
    * The downloader should honor historical-data pacing rules and exponential backoff on pacing errors. ([Interactive Brokers](https://interactivebrokers.github.io/tws-api/historical_limitations.html?utm_source=chatgpt.com "TWS API v9.72+: Historical Data Limitations"))
+
+   Implementation note (async bridge): to safely use `ib_insync` async helpers from worker threads, run a single background asyncio event loop that owns one connected `IB()` instance (an "AsyncIBBridge"). Worker threads should schedule async coroutines onto that loop using `asyncio.run_coroutine_threadsafe(...)` (or a small wrapper) and wait on the returned Future with a timeout. Benefits:
+   - avoids "no current event loop in thread" errors
+   - keeps a single IB connection context for async calls (prevents per-thread connection issues)
+   - enables timeouts, tracing and centralized reconnect logic
+
+   Operational guidance for the bridge:
+   - start the bridge once at downloader startup; ensure it connects to IB in its own thread
+   - schedule `reqHistoricalDataAsync` coroutines on the bridge loop and use `future.result(timeout=...)`
+   - instrument each request with tracing and reasonable timeouts (e.g. 10–20s)
+   - implement reconnect/backoff in the bridge thread if `IB` disconnects
+   - fall back to sync `reqHistoricalData` only if async scheduling fails or times out
 7. After initial data cached, compute all MAs (for all configured lengths) and print the status table; for signals use the assigned MA from `config/assigned_ma.csv`.
 
 ### Minute updater

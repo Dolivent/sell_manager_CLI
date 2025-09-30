@@ -161,7 +161,13 @@ def _cmd_start(args: argparse.Namespace) -> None:
             # create a background download queue so updater isn't blocked by network
             try:
                 from .download_manager import DownloadQueue
-                dlq = DownloadQueue(ib, workers=2, concurrency=4)
+                dlq = DownloadQueue(ib, workers=config.download_workers, concurrency=config.download_concurrency)
+                # configure batch params
+                try:
+                    dlq._batch_size = int(config.batch_size)
+                    dlq._batch_delay = float(config.batch_delay)
+                except Exception:
+                    pass
             except Exception:
                 dlq = None
 
@@ -282,6 +288,13 @@ def main(argv: Optional[list] = None) -> None:
     p_start.add_argument("--live", action="store_true", help="Enable live mode (must be explicit)")
     p_start.add_argument("--client-id", type=int, default=1)
 
+    # metrics command: show queue/failure metrics
+    p_metrics = sub.add_parser("metrics", help="Show download queue and failure metrics")
+
+    # retry-failures command: re-enqueue failures and process them briefly
+    p_retry = sub.add_parser("retry-failures", help="Retry failed downloads from failures log")
+    p_retry.add_argument("--attempts", type=int, default=20, help="Max failures to requeue")
+
     # assign command: sellmanagement assign TICKER TYPE LENGTH
     p_assign = sub.add_parser("assign", help="Assign an MA to a ticker and persist to CSV")
     p_assign.add_argument("ticker", help="Ticker token in [exchange]:[ticker] format, e.g. NASDAQ:AAPL")
@@ -295,6 +308,45 @@ def main(argv: Optional[list] = None) -> None:
     cmd = args.command or "start"
     if cmd == "start":
         _cmd_start(args)
+    elif cmd == "metrics":
+        # show simple metrics from files and config
+        try:
+            from .assign import get_assignments_list
+            from .download_manager import DownloadQueue
+            from pathlib import Path
+            a_list = get_assignments_list()
+            failures_path = (Path(__file__).resolve().parents[2] / 'config' / 'download_failures.jsonl')
+            fcount = 0
+            if failures_path.exists():
+                try:
+                    with failures_path.open('r', encoding='utf-8') as f:
+                        fcount = sum(1 for _ in f)
+                except Exception:
+                    fcount = -1
+            print(f"Assigned MA rows: {len(a_list)}")
+            print(f"Recorded failures: {fcount}")
+            # echo config batch settings
+            try:
+                from .config import Config
+                # print default values
+                print(f"Download workers: {Config.download_workers if hasattr(Config, 'download_workers') else 'N/A'}, concurrency: {Config.download_concurrency if hasattr(Config, 'download_concurrency') else 'N/A'}, batch_size: {Config.batch_size if hasattr(Config, 'batch_size') else 'N/A'}, batch_delay: {Config.batch_delay if hasattr(Config, 'batch_delay') else 'N/A'}")
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"Failed to collect metrics: {e}")
+    elif cmd == "retry-failures":
+        try:
+            from .download_manager import DownloadQueue
+            from .config import Config
+            dlq = DownloadQueue(IBClient(host='127.0.0.1', port=4001, client_id=1), workers=Config.download_workers, concurrency=Config.download_concurrency)
+            summary = dlq.retry_failures(max_attempts=args.attempts)
+            print(f"Retry summary: requeued={summary.get('requeued')} kept={summary.get('kept')} cleared={summary.get('cleared')}")
+            # allow workers to process for a short time
+            import time as _t
+            _t.sleep(2)
+            dlq.stop(wait=True)
+        except Exception as e:
+            print(f"retry-failures failed: {e}")
     elif cmd == "assign":
         _cmd_assign(args)
     else:
