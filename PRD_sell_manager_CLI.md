@@ -15,7 +15,11 @@
   * 1 year of **daily** bars, and
   * 31 days of **30-minute** bars (which we will compile to hourly bars).
 
-    Use asynchronous downloading with rate-limiting (batches of 32 concurrent requests recommended; see implementation). Observe IB historical-data pacing limits. ([Interactive Brokers](https://interactivebrokers.github.io/tws-api/historical_limitations.html?utm_source=chatgpt.com "TWS API v9.72+: Historical Data Limitations"))
+    Use asynchronous downloading with rate-limiting (batches of 32 concurrent requests recommended; see implementation). Observe IB historical-data pacing limits. Note for 30-minute (intraday) data:
+
+    - IB historically returns up to ~31 bars per historical-data request for many intraday parameter combinations. To compute long moving averages (up to 200 periods) on an hourly series we need more than a single 31-bar slice; therefore at startup the downloader will fetch multiple sequential 31-bar slices for each ticker and stitch them together until we have enough 30m bars to aggregate to hourly and compute MAs up to the configured maximum length.
+    - The per-ticker multi-slice backfill must be executed sequentially (one slice after another) to avoid pacing violations for that symbol, while the overall startup downloader may run per-ticker backfills concurrently across different tickers.
+    - For minute-level updates (the regular snapshot flow) we will only request a single short 31-bar 30m slice and merge/aggregate it into the hourly cache — no multi-slice backfilling on the minute path. This keeps minute snapshots fast and low-cost.
 * Cache all fetched data on disk; compute and cache EMA & SMA for durations: `5, 10, 20, 50, 100, 150, 200` for both daily and hourly timeframes.
 * Every  **minute** : fetch last 7 days of daily and last 1 day of hourly data, merge with cache, update MAs and status table.
 * Every **hour** (turn of the hour): evaluate signals; if price closed **below** the assigned MA for that position, **prepare** a full-close order (dry-run by default). On live mode, send order to IB after multiple safety checks. Also cancel any other open orders for that position after close. Use atomic checks to avoid mismatched sizes.
@@ -94,9 +98,9 @@
 5. Build list of tickers as `[exchange]:[ticker]` and queue them for downloads (only include tickers with assigned MAs unless user indicates otherwise).
 6. Start asynchronous downloads for each ticker:
    * Request 1Y daily bars (`durationStr='1 Y'`, `barSize='1 day'`).
-   * Request 31D 30m bars (`durationStr='31 D'`, `barSize='30 mins'`).
-   * Use concurrency semaphore (default `32`) and batching to avoid pacing violations. Merge 30m → hourly.
-   * On receipt, cache raw bars and computed indicators.
+   * Request 31D 30m bars (`durationStr='31 D'`, `barSize='30 mins'`). For hourly-assigned tickers, perform a **sequential backfill** of 31-bar slices until at least `max_ma_length` (for example, 200) 30m bars are collected, then aggregate into hourly bars and persist both raw (30m) and aggregated (1h) caches.
+   * Use a concurrency semaphore (default `32`) and batching to avoid pacing violations. Important: the sequence of 31-bar requests for a single ticker must run in series, but the downloader can run those sequences in parallel across different tickers.
+   * On receipt, cache raw bars and computed indicators (persist both 30m and aggregated 1h series). Merge and dedupe by `Date` when combining slices.
    * The downloader should honor historical-data pacing rules and exponential backoff on pacing errors. ([Interactive Brokers](https://interactivebrokers.github.io/tws-api/historical_limitations.html?utm_source=chatgpt.com "TWS API v9.72+: Historical Data Limitations"))
 
    Implementation note (async bridge): to safely use `ib_insync` async helpers from worker threads, run a single background asyncio event loop that owns one connected `IB()` instance (an "AsyncIBBridge"). Worker threads should schedule async coroutines onto that loop using `asyncio.run_coroutine_threadsafe(...)` (or a small wrapper) and wait on the returned Future with a timeout. Benefits:
@@ -115,7 +119,8 @@
 ### Minute updater
 
 * At **start of every minute** (when system clock ticks to next minute):
-  * Fetch 7D daily + 1D hourly history for each ticker (small requests).
+  * Fetch 7D daily + a short 31-bar 30m slice for each ticker (small requests). For tickers assigned to hourly timeframe, aggregate the returned 30m slice to hourly and merge into the hourly cache.
+  * Do NOT perform multi-slice backfills during minute snapshots — only the single short slice is requested and merged. This keeps per-minute CPU/network usage small.
   * Merge into cache, recompute MAs for changed bars, update CLI table.
 
 ### Hourly evaluator & order flow
@@ -215,7 +220,9 @@
 **Milestone 2 — Historical downloader & cache**
 
 - File: `downloader.py`, `cache.py`. Implement async downloader with concurrency semaphore (configurable, default 32). Download daily + 30m and store in cache.
-- Small win: run start-up and see cached parquet files created.
+- Implement **per-ticker sequential backfill** for 30m bars at startup: fetch multiple 31-bar slices sequentially per ticker until `max_ma_length` 30m bars are available, then aggregate to 1h and persist.
+- Implement fast **minute snapshot** path that requests a single 31-bar 30m slice and merges/aggregates into hourly cache.
+- Small win: run start-up and see cached parquet/ndjson files created and that `1h` cache contains enough bars for `200`-period MAs.
 
 **Milestone 3 — Indicators & tables**
 

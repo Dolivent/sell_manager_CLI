@@ -1,7 +1,8 @@
 from .config import Config
 from .ib_client import IBClient
 from .assign import set_assignment, get_assignments_list
-from .download_manager import persist_batch_daily
+from .downloader import batch_download_daily, persist_batch_halfhours
+from .cache import merge_bars
 from datetime import datetime
 from .minute_snapshot import run_minute_snapshot
 import argparse
@@ -11,7 +12,8 @@ from typing import Optional
 def _cmd_start(args: argparse.Namespace) -> None:
     config = Config(dry_run=not getattr(args, 'live', False), client_id=getattr(args, 'client_id', 1))
 
-    ib = IBClient(host=config.host, port=config.port, client_id=config.client_id)
+    use_rth_flag = not getattr(args, 'no_rth', False)
+    ib = IBClient(host=config.host, port=config.port, client_id=config.client_id, use_rth=use_rth_flag)
     if not ib.connect():
         print("Failed to connect to IB Gateway/TWS")
         return
@@ -30,9 +32,24 @@ def _cmd_start(args: argparse.Namespace) -> None:
 
     print(f"Downloading daily bars for {len(tickers)} tickers in batches...")
     try:
-        persist_batch_daily(ib, tickers, batch_size=getattr(config, 'batch_size', 32), batch_delay=getattr(config, 'batch_delay', 6.0), duration="1 Y")
+        results = batch_download_daily(ib, tickers, batch_size=getattr(config, 'batch_size', 32), batch_delay=getattr(config, 'batch_delay', 6.0), duration="1 Y")
+        # persist/merge daily results into cache
+        for tk, rows in (results or {}).items():
+            try:
+                if rows:
+                    merge_bars(f"{tk}:1d", rows)
+            except Exception:
+                continue
     except Exception as e:
         print(f"Batch download failed: {e}")
+
+    # perform 30m backfill -> persist 30m and aggregated 1h caches
+    try:
+        print(f"Performing 30m backfill for {len(tickers)} tickers (this may take a while)...")
+        # request 200 hourly bars -> 200 * 2 half-hour bars
+        persist_batch_halfhours(ib, tickers, batch_size=getattr(config, 'batch_size', 8), batch_delay=getattr(config, 'batch_delay', 6.0), target_hours=200)
+    except Exception as e:
+        print(f"30m backfill failed: {e}")
 
     # Start a continuous minute-aligned loop: run snapshot at top of every minute
     try:
@@ -110,6 +127,7 @@ def main(argv: Optional[list] = None) -> None:
 
     # start command (default behavior)
     p_start = sub.add_parser("start", help="Start the sellmanagement service")
+    p_start.add_argument("--no-rth", action="store_true", help="Do not restrict historical requests to regular trading hours")
     p_start.add_argument("--dry-run", action="store_true", default=True, help="Run in dry-run mode (default)")
     p_start.add_argument("--live", action="store_true", help="Enable live mode (must be explicit)")
     p_start.add_argument("--client-id", type=int, default=1)

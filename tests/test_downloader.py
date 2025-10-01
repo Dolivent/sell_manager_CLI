@@ -32,10 +32,28 @@ def test_backfill_halfhours_sequential(monkeypatch):
 
     ib = types.SimpleNamespace()
     ib.download_halfhours = fake_download_halfhours
-
     rows = backfill_halfhours_sequential(ib, "EX:ABC", target_bars=31)
     assert len(rows) == 31
     # ensure we attempted earlier durations first
     assert "2 D" in calls or "7 D" in calls
+
+
+def test_aggregate_halfhours_to_hours():
+    from sellmanagement.aggregation import aggregate_halfhours_to_hours
+
+    # create 4 halfhour bars (oldest-first)
+    halfhours = [
+        {"Date": "2025-01-01 09:30:00", "Open": 1, "High": 2, "Low": 1, "Close": 1.5, "Volume": 10},
+        {"Date": "2025-01-01 10:00:00", "Open": 1.5, "High": 2.5, "Low": 1.4, "Close": 2.0, "Volume": 20},
+        {"Date": "2025-01-01 10:30:00", "Open": 2.0, "High": 2.2, "Low": 1.9, "Close": 2.1, "Volume": 5},
+        {"Date": "2025-01-01 11:00:00", "Open": 2.1, "High": 2.4, "Low": 2.0, "Close": 2.3, "Volume": 8},
+    ]
+
+    hours = aggregate_halfhours_to_hours(halfhours)
+    assert isinstance(hours, list)
+    # we expect 2 hourly bars
+    assert len(hours) == 2
+    assert hours[0]["Open"] == 1
+    assert hours[0]["Close"] == 2.0
 
 

@@ -5,7 +5,7 @@ from typing import List, Dict, Any
 
 from .assign import get_assignments_list
 from .cache import merge_bars, _key_to_path, load_bars
-from .downloader import batch_download_daily
+from .downloader import batch_download_daily, backfill_halfhours_sequential
 from .trace import append_trace
 from .indicators import compute_sma_series_all, compute_ema_series_all
 
@@ -51,8 +51,29 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
         # if assignment is hourly, do NOT compute MA from daily data; require hourly cache
         if timeframe.strip().upper() in ("1H", "H", "HOURLY"):
             key = _make_key_from_ticker(tk, timeframe="1H")
-            # we do not merge `results` (daily) into hourly cache
-            bars = load_bars(key, limit=365)
+            # For hourly-assigned tickers we fetch a short 30m snapshot and
+            # aggregate to hourly. We avoid backfilling here (minute snapshot)
+            # and instead request a single 31-bar slice for efficiency.
+            try:
+                halfhours = []
+                # try to call ib_client download helper with 31-day window
+                # the downloader helper returns newest-last; tests expect list
+                try:
+                    halfhours = ib_client.download_halfhours(tk, duration="31 D") or []
+                except Exception:
+                    # fallback to backfill helper if available (shouldn't be used in minute path)
+                    halfhours = backfill_halfhours_sequential(ib_client, tk, target_bars=31)
+
+                # convert to hourly bars using aggregator and persist
+                try:
+                    hourly = aggregate_halfhours_to_hours(halfhours)
+                    if hourly:
+                        merge_bars(key, hourly)
+                except Exception:
+                    append_trace({"event": "aggregate_or_merge_failed", "token": tk})
+                bars = load_bars(key, limit=365)
+            except Exception:
+                bars = load_bars(key, limit=365)
         else:
             # daily timeframe: merge downloaded daily bars and load daily cache
             key = _make_key_from_ticker(tk, timeframe="1D")
