@@ -48,6 +48,7 @@ def set_assignment(ticker: str, ma_type: str, length: int, timeframe: str = "1H"
             r["ticker"] = key
             r["type"] = ma_type_up
             r["length"] = str(length)
+            r["timeframe"] = timeframe
             updated = True
             break
 

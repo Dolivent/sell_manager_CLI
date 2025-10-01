@@ -10,6 +10,7 @@ CLI expects methods named `connect`, `disconnect`, `download_daily`,
 """
 from __future__ import annotations
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import List, Dict, Any
 
 
@@ -129,9 +130,33 @@ class IBClient:
             symbol = token
 
         contract = Stock(symbol, exchange, 'USD')
+
+        # Normalize end datetime into an IB-acceptable format. IB accepts
+        # UTC-formatted strings like 'yyyymmdd-HH:MM:SS' or local TZ variants.
+        end_dt = ''
+        if end:
+            try:
+                # try ISO parsing first (handles offsets)
+                dt = datetime.fromisoformat(end)
+            except Exception:
+                try:
+                    # fallback: try parsing common naive datetime string
+                    dt = datetime.fromisoformat(end.replace('Z', '+00:00'))
+                except Exception:
+                    # give IB the raw string as a last resort
+                    end_dt = end
+                    dt = None
+            if dt is not None:
+                # assume America/New_York when no tzinfo provided
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=ZoneInfo("America/New_York"))
+                # convert to UTC and format as IB's UTC notation
+                dt_utc = dt.astimezone(ZoneInfo("UTC"))
+                end_dt = dt_utc.strftime('%Y%m%d-%H:%M:%S')
+
         bars = self._ib.reqHistoricalData(
             contract,
-            endDateTime=end or '',
+            endDateTime=end_dt or '',
             durationStr=duration,
             barSizeSetting='30 mins',
             whatToShow='TRADES',
