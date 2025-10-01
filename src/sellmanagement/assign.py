@@ -21,16 +21,18 @@ def set_assignment(ticker: str, ma_type: str, length: int, timeframe: str = "1H"
         raise ValueError("type must be SMA or EMA")
     if length <= 0:
         raise ValueError("length must be positive integer")
-    timeframe = (timeframe or "1H").strip()
-    if timeframe not in ("1H", "D"):
-        # accept simple aliases
-        tf = timeframe.upper()
-        if tf in ("H", "HOURLY"):
-            timeframe = "1H"
-        elif tf in ("DAY", "DAILY", "D"):
-            timeframe = "D"
-        else:
-            raise ValueError("timeframe must be '1H' or 'D'")
+    # allow empty timeframe to represent "not assigned"; otherwise normalize
+    timeframe = (timeframe or "").strip()
+    if timeframe:
+        if timeframe not in ("1H", "D"):
+            # accept simple aliases
+            tf = timeframe.upper()
+            if tf in ("H", "HOURLY"):
+                timeframe = "1H"
+            elif tf in ("DAY", "DAILY", "D"):
+                timeframe = "D"
+            else:
+                raise ValueError("timeframe must be '1H' or 'D'")
 
     rows = []
     if ASSIGNED_CSV.exists():
@@ -84,7 +86,7 @@ def get_assignments() -> dict:
             out[t.upper()] = {
                 "type": (r.get("type") or "").strip().upper(),
                 "length": int((r.get("length") or "0").strip() or 0),
-                "timeframe": (r.get("timeframe") or "1H").strip(),
+            "timeframe": (r.get("timeframe") or "").strip(),
             }
     return out
 
@@ -112,7 +114,7 @@ def get_assignments_list() -> list:
                 "ticker": t,
                 "type": (r.get("type") or "").strip().upper(),
                 "length": length,
-                "timeframe": (r.get("timeframe") or "1H").strip(),
+            "timeframe": (r.get("timeframe") or "").strip(),
             })
     return out
 
@@ -160,6 +162,59 @@ def sync_assignments(tokens: Iterable[str], default_type: str = "SMA", default_l
                 "type": r.get("type", ""),
                 "length": r.get("length", ""),
                 "timeframe": r.get("timeframe", default_timeframe),
+            })
+
+    return {"added": added, "removed": removed, "kept": kept}
+
+
+def sync_assignments_to_positions(tokens: Iterable[str]) -> dict:
+    """Synchronize `assigned_ma.csv` to exactly the provided `tokens` list using existing assignments.
+
+    - Keeps existing assignments for tokens that are present.
+    - Removes assignments for tokens not present anymore.
+    - Appends new tokens but leaves their assignment fields blank (for interactive assignment later).
+
+    Returns a summary dict: {"added": [...], "removed": [...], "kept": [...]}.
+    """
+    _ensure_config_dir()
+    toks = [t.strip() for t in tokens if t and t.strip()]
+    toks_upper = [t.upper() for t in toks]
+
+    existing = get_assignments()  # keyed by upper ticker
+
+    kept = []
+    added = []
+    rows = []
+    for t, t_up in zip(toks, toks_upper):
+        if t_up in existing:
+            a = existing[t_up]
+            rows.append({
+                "ticker": t,
+                "type": a.get("type", ""),
+                "length": str(int(a.get("length") or 0)) if a.get("length") else "",
+                "timeframe": a.get("timeframe", ""),
+            })
+            kept.append(t)
+        else:
+            # new token: leave assignment blank for interactive flow
+            rows.append({"ticker": t, "type": "", "length": "", "timeframe": ""})
+            added.append(t)
+
+    removed = []
+    for k in existing.keys():
+        if k not in toks_upper:
+            removed.append(k)
+
+    # write out canonical file
+    with ASSIGNED_CSV.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["ticker", "type", "length", "timeframe"])
+        writer.writeheader()
+        for r in rows:
+            writer.writerow({
+                "ticker": r.get("ticker", ""),
+                "type": r.get("type", ""),
+                "length": r.get("length", ""),
+                "timeframe": r.get("timeframe", ""),
             })
 
     return {"added": added, "removed": removed, "kept": kept}

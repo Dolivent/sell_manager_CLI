@@ -84,13 +84,21 @@
 
 1. Load Assigned MAs (first step)
    * Before connecting to IB, read the assigned-MA CSV at `config/assigned_ma.csv` mapping each ticker (in `[exchange]:[ticker]` format) to its assigned moving average and timeframe. The CSV columns should be: `ticker,type,length,timeframe` (for example: `NASDAQ:AAPL,SMA,50,1H`).
-   * If a live IB position exists that is not present in the CSV, the app will prompt the user interactively, one ticker at a time, to select an assigned MA and timeframe. The interactive flow is:
-     1. Show the ticker token.
-     2. Prompt to choose MA family from a numbered list (e.g. 1) SMA, 2) EMA).
-     3. Prompt to enter MA length (default shown, e.g. 50).
-     4. Prompt to choose timeframe from a numbered list (e.g. 1) 1H, 2) D).
-     5. Persist the selection to `config/assigned_ma.csv` and continue to the next missing ticker.
-     This interactive assignment is the default at startup; it repeats until all missing tickers have assignments.
+  * If a live IB position exists that is not present in the CSV, or if the CSV contains rows with missing assignment fields, the app will prompt the user interactively to assign each missing ticker. The interactive flow is simplified to a single selection per ticker for speed and consistency:
+    1. Show the ticker token.
+    2. Present a single numbered list of MA choices where each line displays two options side-by-side: **SMA** on the left and **EMA** on the right for the supported MA lengths and timeframes. Example (two columns per line):
+
+       1) SMA  5 1H        2) EMA  5 1H
+       3) SMA 10 1H        4) EMA 10 1H
+       5) SMA 20 1H        6) EMA 20 1H
+       ...
+
+    3. The user enters one number to choose the desired MA (a sensible default is shown).
+    4. The selected MA (family, length, timeframe) is persisted to `config/assigned_ma.csv` and the app moves to the next missing ticker.
+    Notes:
+    - The prompt runs for both newly-discovered positions and any existing CSV rows that are incomplete (missing type, length, or timeframe).
+    - There is no separate "no timeframe" option in the interactive picker; timeframes are explicitly selected as part of the single-number choice.
+    - This interactive assignment is the default at startup; it repeats until all missing tickers have assignments.
    * This file serves as the source of truth for which MA (and timeframe) is used when evaluating signals at runtime.
 2. Read config, set `dry-run=True` unless `--live` passed. Ensure `--client-id` unique and validate any CLI flags.
 3. Connect to IBG/TWS: `ib.connect(host, 4001, clientId=...)`.  **(port 4001 is the IBG/TWS SSL port)** . ([Interactive Brokers](https://www.interactivebrokers.com/download/IB-Host-and-Ports.pdf?utm_source=chatgpt.com "IB-Host-and-Ports.pdf"))
@@ -417,6 +425,25 @@ def log_signal(path, record):
    * Compute indicators (all durations), but for signals use the *assigned* MA for each ticker.
 
 ---
+
+## 🔹 Implementation notes (development updates)
+
+The current implementation includes the following developer-facing changes that affect runtime and testing:
+
+- **Real IB client (ib_insync):** the CLI now uses `ib_insync` for live connections and historical requests. `ib_insync` must be installed in the runtime environment (e.g. `pip install ib_insync`). If IB is unreachable the connect call raises a descriptive error; we plan a configurable fallback for offline testing.
+
+- **Regular Trading Hours (RTH) control:** historical requests accept a `useRTH` flag. The CLI exposes `--no-rth` to request full-session data; by default RTH is enabled (requests respect regular trading hours).
+
+- **30m backfill target is hourly-based:** startup backfill requests 31-bar intraday slices sequentially per ticker until the configured **hourly** target is reached. The current default is **200 hourly bars** (i.e. ~400 half-hour bars). This is controlled by `target_hours` passed to the backfill routine.
+
+- **Per-ticker sequential backfill:** to respect IB pacing rules, each ticker's multi-slice backfill runs in series; the downloader runs these sequences in controlled batches across tickers.
+
+- **Launchers & CI helpers:** added lightweight launcher scripts `run_sellmanagement.ps1` and `run_sellmanagement.sh` for easy local runs with PYTHONPATH set correctly.
+
+- **Tests:** unit tests were added for the backfill and 30m→1h aggregation logic. Continuous integration should run `pytest` against these tests.
+
+These updates are already reflected in the code under `sell_manager_CLI/src/sellmanagement/` and in the example launch/usage notes earlier in this document.
+
 
 ## 🔹 Assigned-MA storage (chosen: CSV)
 

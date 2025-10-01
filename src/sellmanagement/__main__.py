@@ -1,6 +1,6 @@
 from .config import Config
 from .ib_client import IBClient
-from .assign import set_assignment, get_assignments_list
+from .assign import set_assignment, get_assignments_list, sync_assignments_to_positions
 from .downloader import batch_download_daily, persist_batch_halfhours
 from .cache import merge_bars
 from datetime import datetime
@@ -18,12 +18,137 @@ def _cmd_start(args: argparse.Namespace) -> None:
         print("Failed to connect to IB Gateway/TWS")
         return
 
-    # Determine tickers to fetch (from assignments list)
+    # Determine tickers to fetch (from assignments list) and sync with live positions
     try:
         rows = get_assignments_list()
-        tickers = [r.get('ticker') for r in rows if r.get('ticker')]
+        assigned_tickers = [r.get('ticker') for r in rows if r.get('ticker')]
     except Exception:
-        tickers = []
+        assigned_tickers = []
+
+    # fetch live positions and normalize to EXCHANGE:SYMBOL tokens
+    try:
+        live_positions = ib.positions()
+        # positions() returns a list of Position(contract, position, avgCost) objects
+        live_tickers = []
+        parsed_positions = []
+        for p in live_positions:
+            try:
+                contract = getattr(p, 'contract', None) or getattr(p, 'contract', None)
+                if contract is None:
+                    continue
+                symbol = getattr(contract, 'symbol', None) or getattr(contract, 'localSymbol', None)
+                exchange = getattr(contract, 'exchange', None) or 'SMART'
+                position_size = getattr(p, 'position', None) or getattr(p, 'pos', None) or 0
+                avg_cost = getattr(p, 'avgCost', None) or getattr(p, 'avg_cost', None)
+                if symbol:
+                    token = f"{exchange}:{symbol}"
+                    live_tickers.append(token)
+                    parsed_positions.append({
+                        'ticker': token,
+                        'position': float(position_size) if position_size is not None else 0.0,
+                        'avgCost': float(avg_cost) if avg_cost is not None else None,
+                    })
+            except Exception:
+                continue
+
+        # print parsed positions to terminal
+        print("\nFetched positions:")
+        print(f"{'ticker':30}{'position':>12}{'avgCost':>12}")
+        for r in parsed_positions:
+            pos_s = '-' if r['position'] is None else f"{r['position']:.2f}"
+            ac_s = '-' if r['avgCost'] is None else f"{r['avgCost']:.4f}"
+            print(f"{r['ticker']:30}{pos_s:>12}{ac_s:>12}")
+    except Exception:
+        live_tickers = []
+
+    # synchronize assignments file: keep existing assignments for tickers that are present in live_tickers,
+    # add new tickers with blank assignment so user can assign later, and remove assignments for tickers no longer present.
+    try:
+        sync_result = sync_assignments_to_positions(live_tickers)
+        tickers = live_tickers
+
+        # show sync summary and current assignments to help debugging
+        try:
+            print('\nAssignment sync result:')
+            print(sync_result)
+            from .assign import get_assignments_list
+            cur = get_assignments_list()
+            print('\nCurrent assigned_ma.csv contents:')
+            for r in cur:
+                print(f"{r.get('ticker'):30}{r.get('type') or '-':>6}{str(r.get('length') or '-') :>8}{r.get('timeframe') or '-':>8}")
+        except Exception:
+            pass
+
+        # determine tickers needing assignment: newly added OR existing rows with missing fields
+        added = sync_result.get('added', [])
+        cur_assignments = get_assignments_list()
+        missing = []
+        for r in cur_assignments:
+            t = r.get('ticker')
+            if not t:
+                continue
+            # consider missing if type empty or length missing/zero or timeframe empty
+            if not (r.get('type') and r.get('length')) or not r.get('timeframe'):
+                missing.append(t)
+
+        # union of newly added and existing missing assignments (preserve order)
+        need_assign = []
+        for tk in added + missing:
+            if tk not in need_assign:
+                need_assign.append(tk)
+
+        if need_assign:
+            print('\nTickers requiring assignment:')
+            for tk in need_assign:
+                print(f" - {tk}")
+
+            # build paired options: SMA on left, EMA on right for each length/timeframe
+            lengths = [5, 10, 20, 50, 100, 150, 200]
+            timeframes = ['1H', 'D']
+            options = []
+            for ln in lengths:
+                for tf in timeframes:
+                    options.append(('SMA', ln, tf))
+                    options.append(('EMA', ln, tf))
+
+            # default selection index for convenience (SMA,50,1H)
+            try:
+                default_idx = options.index(('SMA', 50, '1H')) + 1
+            except Exception:
+                default_idx = 1
+
+            for tk in need_assign:
+                try:
+                    print(f"\nAssign MA for {tk}. Choose from the numbered list below (enter number, default {default_idx}):")
+                    # print two columns per line (SMA left, EMA right)
+                    for j in range(0, len(options), 2):
+                        left_num = j + 1
+                        right_num = j + 2
+                        fam_l, ln_l, tf_l = options[j]
+                        fam_r, ln_r, tf_r = options[j + 1]
+                        left_label = f"{fam_l} {ln_l} {tf_l}"
+                        right_label = f"{fam_r} {ln_r} {tf_r}"
+                        print(f" {left_num:3d}) {left_label:16s} {right_num:3d}) {right_label}")
+
+                    sel = input(f"Selection [default {default_idx}]: ").strip()
+                    if not sel:
+                        sel_idx = default_idx
+                    else:
+                        try:
+                            sel_idx = int(sel)
+                        except Exception:
+                            sel_idx = default_idx
+                    if sel_idx < 1 or sel_idx > len(options):
+                        sel_idx = default_idx
+                    fam, ln, tf = options[sel_idx - 1]
+                    # persist assignment; timeframe is always present
+                    set_assignment(tk, fam, int(ln), timeframe=tf)
+                    print(f"Assigned {tk} -> {fam}({ln}) {tf}")
+                except Exception as e:
+                    print(f"Failed to assign for {tk}: {e}")
+    except Exception:
+        # fallback to assigned list if sync fails
+        tickers = assigned_tickers
 
     if not tickers:
         print("No tickers found in assignments; nothing to download.")
