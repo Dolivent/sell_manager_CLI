@@ -3,7 +3,7 @@ from .ib_client import IBClient
 from .assign import set_assignment, get_assignments_list, sync_assignments_to_positions
 from .downloader import batch_download_daily, persist_batch_halfhours
 from .cache import merge_bars
-from datetime import datetime
+from datetime import datetime, timedelta
 from .minute_snapshot import run_minute_snapshot
 import argparse
 from typing import Optional
@@ -184,7 +184,15 @@ def _cmd_start(args: argparse.Namespace) -> None:
             # wait until next top of minute (use America/New_York timezone)
             from zoneinfo import ZoneInfo
             now = datetime.now(tz=ZoneInfo('America/New_York'))
-            seconds_till_next = 60 - now.second - (now.microsecond / 1_000_000)
+            # compute next minute boundary
+            next_min = (now.replace(second=0, microsecond=0) + timedelta(minutes=1))
+            # special-case: if next minute is 16:00 (4pm NY), wake 5 seconds earlier
+            if next_min.hour == 16 and next_min.minute == 0:
+                seconds_till_next = (next_min - now).total_seconds() - 5.0
+            else:
+                seconds_till_next = (next_min - now).total_seconds()
+            if seconds_till_next < 0.1:
+                seconds_till_next = 0.1
             time.sleep(seconds_till_next)
             try:
                 rows = run_minute_snapshot(ib, tickers, concurrency=getattr(config, 'batch_size', 32))
