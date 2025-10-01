@@ -3,13 +3,15 @@
 These functions are intentionally small and testable.
 """
 from typing import List, Dict, Any
+from datetime import datetime as _dt
 
 
 def aggregate_halfhours_to_hours(halfhours: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Aggregate 30-minute bars (assumed newest-last) into hourly bars.
 
-    The function groups pairs of consecutive halfhour bars into one hourly bar.
-    If an odd number of halfhours exists, the last unmatched halfhour is dropped.
+    Robust approach: group halfhours by the hour start timestamp derived from each
+    bar's Date (set minutes/seconds to zero), then compute Open/High/Low/Close/Volume
+    for each hour. Labels the hourly bar with the hour start (e.g., 15:00 for 15:00–16:00).
 
     Input bar dicts must contain at least: Date, Open, High, Low, Close, Volume.
     Returns hourly bars in newest-last order.
@@ -17,39 +19,65 @@ def aggregate_halfhours_to_hours(halfhours: List[Dict[str, Any]]) -> List[Dict[s
     if not halfhours:
         return []
 
-    # ensure oldest-first ordering for grouping
+    # Ensure oldest-first ordering for deterministic grouping
     bars = list(halfhours)
-
-    # if they are newest-last, reverse to oldest-first for pairing
-    # detect by comparing first/last Date strings: assume chronological if Date increases
     try:
-        if bars[0].get("Date") and bars[-1].get("Date") and bars[0]["Date"] > bars[-1]["Date"]:
+        d0 = bars[0].get("Date")
+        d1 = bars[-1].get("Date")
+        if d0 and d1 and str(d0) > str(d1):
             bars = list(reversed(bars))
     except Exception:
-        # if Date comparison fails, proceed with given order
         pass
 
-    hourly: List[Dict[str, Any]] = []
-    i = 0
-    while i + 1 < len(bars):
-        a = bars[i]
-        b = bars[i + 1]
+    groups: Dict[str, List[Dict[str, Any]]] = {}
+    for b in bars:
+        d = b.get("Date")
+        if not d:
+            continue
         try:
+            bdt = _dt.fromisoformat(str(d))
+            hour_start = bdt.replace(minute=0, second=0, microsecond=0)
+            key = hour_start.isoformat()
+        except Exception:
+            # Fallback: derive key by truncating the string (unsafe but better than dropping)
+            try:
+                key = str(d)[:13] + ":00:00"
+            except Exception:
+                continue
+        groups.setdefault(key, []).append(b)
+
+    hourly: List[Dict[str, Any]] = []
+    for key in sorted(groups.keys()):
+        items = groups[key]
+        # sort items by Date ascending within the hour
+        try:
+            items = sorted(items, key=lambda x: str(x.get("Date")))
+        except Exception:
+            pass
+        try:
+            open_v = items[0].get("Open")
+            close_v = items[-1].get("Close")
+            high_v = max((it.get("High") or 0) for it in items)
+            low_v = min((it.get("Low") or 0) for it in items)
+            vol_v = 0
+            for it in items:
+                try:
+                    vol_v += int(it.get("Volume") or 0)
+                except Exception:
+                    pass
             hour_bar = {
-                "Date": b.get("Date"),
-                "Open": a.get("Open"),
-                "High": max(a.get("High", 0) or 0, b.get("High", 0) or 0),
-                "Low": min(a.get("Low", 0) or 0, b.get("Low", 0) or 0),
-                "Close": b.get("Close"),
-                "Volume": (a.get("Volume", 0) or 0) + (b.get("Volume", 0) or 0),
+                "Date": key,
+                "Open": open_v,
+                "High": high_v,
+                "Low": low_v,
+                "Close": close_v,
+                "Volume": vol_v,
             }
             hourly.append(hour_bar)
         except Exception:
-            # skip malformed pair
-            pass
-        i += 2
+            # skip malformed hour group
+            continue
 
-    # return newest-last ordering
     return hourly
 
 
