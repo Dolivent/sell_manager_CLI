@@ -1,4 +1,5 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import json
 import time
 from pathlib import Path
@@ -37,7 +38,8 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
     Returns the path to the log file.
     """
 
-    ts = datetime.utcnow().isoformat()
+    # use America/New_York timezone for all snapshot timestamps
+    ts = datetime.now(tz=ZoneInfo("America/New_York")).isoformat()
     append_trace({"event": "minute_snapshot_start", "tickers": tickers, "ts": ts})
 
     snap_start = time.perf_counter()
@@ -59,11 +61,11 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
     # rows collects per-ticker snapshot rows
     rows: List[Dict[str, Any]] = []
     if daily_tickers:
-        batch_submitted_ts = datetime.utcnow().isoformat()
+        batch_submitted_ts = datetime.now(tz=ZoneInfo("America/New_York")).isoformat()
         t0 = time.perf_counter()
         results = batch_download_daily(ib_client, daily_tickers, batch_size=concurrency, batch_delay=0, duration="2 D")
         t1 = time.perf_counter()
-        batch_returned_ts = datetime.utcnow().isoformat()
+        batch_returned_ts = datetime.now(tz=ZoneInfo("America/New_York")).isoformat()
         append_trace({
             "event": "batch_download_daily_done",
             "tickers": daily_tickers,
@@ -87,18 +89,18 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
                 halfhours = []
                 # For minute snapshot request only a short recent window. Measure download time.
                 try:
-                    download_submitted_ts = datetime.utcnow().isoformat()
+                    download_submitted_ts = datetime.now(tz=ZoneInfo("America/New_York")).isoformat()
                     dl0 = time.perf_counter()
                     halfhours = ib_client.download_halfhours(tk, duration="1 D") or []
                     dl1 = time.perf_counter()
-                    download_returned_ts = datetime.utcnow().isoformat()
+                    download_returned_ts = datetime.now(tz=ZoneInfo("America/New_York")).isoformat()
                     per_dl_ms = (dl1 - dl0) * 1000.0
                 except Exception:
-                    download_submitted_ts = datetime.utcnow().isoformat()
+                    download_submitted_ts = datetime.now(tz=ZoneInfo("America/New_York")).isoformat()
                     bf0 = time.perf_counter()
                     halfhours = backfill_halfhours_sequential(ib_client, tk, target_bars=4)
                     bf1 = time.perf_counter()
-                    download_returned_ts = datetime.utcnow().isoformat()
+                    download_returned_ts = datetime.now(tz=ZoneInfo("America/New_York")).isoformat()
                     per_dl_ms = (bf1 - bf0) * 1000.0
                 # record per-ticker download time and submitted/returned timestamps in trace
                 append_trace({

@@ -181,14 +181,23 @@ def _cmd_start(args: argparse.Namespace) -> None:
         print("Entering minute snapshot loop. Press Ctrl+C to stop.")
         import time
         while True:
-            # wait until next top of minute
-            now = datetime.utcnow()
+            # wait until next top of minute (use America/New_York timezone)
+            from zoneinfo import ZoneInfo
+            now = datetime.now(tz=ZoneInfo('America/New_York'))
             seconds_till_next = 60 - now.second - (now.microsecond / 1_000_000)
             time.sleep(seconds_till_next)
             try:
                 rows = run_minute_snapshot(ib, tickers, concurrency=getattr(config, 'batch_size', 32))
                 # print table-like output: ticker | last_close | MA(value) | distance_pct
-                print(f"\nMinute snapshot at {datetime.utcnow().isoformat()}")
+                from zoneinfo import ZoneInfo
+                dt = datetime.now(tz=ZoneInfo('America/New_York'))
+                date_s = dt.strftime('%Y-%m-%d')
+                time_s = dt.strftime('%H:%M:%S.%f')
+                tz_z = dt.strftime('%z')  # e.g. -0400
+                tz_s = (tz_z[:3] + ':' + tz_z[3:]) if tz_z else ''
+                print("\nMinute snapshot at:")
+                print(date_s)
+                print(time_s)
                 # formatted table: aligned columns
                 hdr = f"{'ticker':20}{'last_close':>12}{'ma_value':>12}{'distance_pct':>14}{'assigned_ma':>16}{'tf':>6}"
                 print(hdr)

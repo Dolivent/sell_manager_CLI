@@ -1,5 +1,6 @@
 from pathlib import Path
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import json
 
 
@@ -12,7 +13,9 @@ def _trace_path() -> Path:
 def append_trace(record: dict) -> None:
     try:
         p = _trace_path()
-        data = {"ts": datetime.utcnow().isoformat(), **record}
+        # use America/New_York for trace timestamps
+        ts = datetime.now(tz=ZoneInfo("America/New_York")).isoformat()
+        data = {"ts": ts, **record}
         with p.open("a", encoding="utf-8") as f:
             f.write(json.dumps(data, ensure_ascii=False) + "\n")
     except Exception:
