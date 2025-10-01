@@ -216,28 +216,39 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
             last_close = closes[-1] if closes else None
             last_bar_date = bars[-1].get('Date') if bars else None
 
-        # compute MA only when assignment timeframe exists in the corresponding cache
+        # compute MA only when assignment exists and has valid type/length
         if ass and bars:
-            l = int(ass.get('length', 0))
-            ttype = ass.get('type', 'SMA')
+            # defensive: ensure type and length are present and valid
+            try:
+                ttype = (ass.get('type') or '').strip().upper()
+                l = int(ass.get('length') or 0)
+            except Exception:
+                # malformed assignment; skip MA computation for this ticker
+                append_trace({"event": "invalid_assignment_skip", "token": tk, "assignment": ass})
+                ttype = ''
+                l = 0
             tf = (ass.get('timeframe') or '1H').strip().upper()
-            # if assignment is hourly but no hourly bars exist, skip computation (mark missing)
-            if tf in ("1H", "H", "HOURLY") and not bars:
+            if not ttype or l <= 0:
+                # user hasn't assigned a proper MA yet; skip computation
                 ma_value = None
             else:
-                if ttype == 'SMA':
-                    sma_map = compute_sma_series_all(closes, [l])
-                    series = sma_map.get(l, [])
-                    ma_value = series[-1] if series else None
+                # if assignment is hourly but no hourly bars exist, skip computation (mark missing)
+                if tf in ("1H", "H", "HOURLY") and not bars:
+                    ma_value = None
                 else:
-                    ema_map = compute_ema_series_all(closes, [l])
-                    series = ema_map.get(l, [])
-                    ma_value = series[-1] if series else None
-                if ma_value is not None and last_close is not None:
-                    try:
-                        distance_pct = ((last_close - ma_value) / ma_value) * 100.0 if ma_value != 0 else None
-                    except Exception:
-                        distance_pct = None
+                    if ttype == 'SMA':
+                        sma_map = compute_sma_series_all(closes, [l])
+                        series = sma_map.get(l, [])
+                        ma_value = series[-1] if series else None
+                    else:
+                        ema_map = compute_ema_series_all(closes, [l])
+                        series = ema_map.get(l, [])
+                        ma_value = series[-1] if series else None
+                    if ma_value is not None and last_close is not None:
+                        try:
+                            distance_pct = ((last_close - ma_value) / ma_value) * 100.0 if ma_value != 0 else None
+                        except Exception:
+                            distance_pct = None
 
         tf_display = None
         if ass:

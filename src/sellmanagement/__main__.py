@@ -216,6 +216,74 @@ def _cmd_start(args: argparse.Namespace) -> None:
                             # sync assignment file to current positions (preserve existing assignments)
                             sync_result = sync_assignments_to_positions(live_tickers)
                             append_trace({"event": "sync_assignments_before_snapshot", "summary": sync_result})
+
+                            # If any newly added or previously-missing assignments exist, prompt the user
+                            # interactively (same flow as startup) and persist selections immediately.
+                            added = sync_result.get('added', [])
+                            # read current canonical assignments to find missing/blank rows
+                            from .assign import get_assignments_list
+                            cur_assignments = get_assignments_list()
+                            missing = []
+                            for r in cur_assignments:
+                                t = r.get('ticker')
+                                if not t:
+                                    continue
+                                if not (r.get('type') and r.get('length')) or not r.get('timeframe'):
+                                    missing.append(t)
+
+                            # union of added + missing
+                            need_assign = []
+                            for tk in added + missing:
+                                if tk not in need_assign:
+                                    need_assign.append(tk)
+
+                            if need_assign:
+                                print('\nTickers requiring assignment (runtime):')
+                                for tk in need_assign:
+                                    print(f" - {tk}")
+
+                                lengths = [5, 10, 20, 50, 100, 150, 200]
+                                timeframes = ['1H', 'D']
+                                options = []
+                                for ln in lengths:
+                                    for tf in timeframes:
+                                        options.append(('SMA', ln, tf))
+                                        options.append(('EMA', ln, tf))
+
+                                try:
+                                    default_idx = options.index(('SMA', 50, '1H')) + 1
+                                except Exception:
+                                    default_idx = 1
+
+                                from .assign import set_assignment
+                                for tk in need_assign:
+                                    try:
+                                        print(f"\nAssign MA for {tk}. Choose from the numbered list below (enter number, default {default_idx}):")
+                                        for j in range(0, len(options), 2):
+                                            left_num = j + 1
+                                            right_num = j + 2
+                                            fam_l, ln_l, tf_l = options[j]
+                                            fam_r, ln_r, tf_r = options[j + 1]
+                                            left_label = f"{fam_l} {ln_l} {tf_l}"
+                                            right_label = f"{fam_r} {ln_r} {tf_r}"
+                                            print(f" {left_num:3d}) {left_label:16s} {right_num:3d}) {right_label}")
+
+                                        sel = input(f"Selection [default {default_idx}]: ").strip()
+                                        if not sel:
+                                            sel_idx = default_idx
+                                        else:
+                                            try:
+                                                sel_idx = int(sel)
+                                            except Exception:
+                                                sel_idx = default_idx
+                                        if sel_idx < 1 or sel_idx > len(options):
+                                            sel_idx = default_idx
+                                        fam, ln, tf = options[sel_idx - 1]
+                                        set_assignment(tk, fam, int(ln), timeframe=tf)
+                                        print(f"Assigned {tk} -> {fam}({ln}) {tf}")
+                                    except Exception as e:
+                                        print(f"Failed to assign for {tk}: {e}")
+
                             # restrict snapshot to live tickers to avoid acting on closed positions
                             tickers = live_tickers
                         except Exception as e:
