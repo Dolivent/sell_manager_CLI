@@ -34,15 +34,28 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
 
     Returns the path to the log file.
     """
+
     ts = datetime.utcnow().isoformat()
     append_trace({"event": "minute_snapshot_start", "tickers": tickers, "ts": ts})
 
-    # download short duration (7 D) for daily cache only
-    results = batch_download_daily(ib_client, tickers, batch_size=concurrency, batch_delay=0, duration="7 D")
-
-    rows: List[Dict[str, Any]] = []
-    # load assignments in file order
+    # load assignments in file order and partition tickers by assigned timeframe
     assignments = {r.get('ticker'): r for r in get_assignments_list()}
+    daily_tickers: List[str] = []
+    hourly_tickers: List[str] = []
+    for tk in tickers:
+        ass = assignments.get(tk)
+        tf = (ass.get('timeframe') if ass else '1H') or '1H'
+        if tf.strip().upper() in ("1H", "H", "HOURLY"):
+            hourly_tickers.append(tk)
+        else:
+            daily_tickers.append(tk)
+
+    # download a reduced short duration for daily-assigned tickers only (2 days)
+    results: Dict[str, List[Dict[str, Any]]] = {}
+    # rows collects per-ticker snapshot rows
+    rows: List[Dict[str, Any]] = []
+    if daily_tickers:
+        results = batch_download_daily(ib_client, daily_tickers, batch_size=concurrency, batch_delay=0, duration="2 D")
 
     for tk in tickers:
         ass = assignments.get(tk, None)
@@ -56,13 +69,15 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
             # and instead request a single 31-bar slice for efficiency.
             try:
                 halfhours = []
-                # try to call ib_client download helper with 31-day window
-                # the downloader helper returns newest-last; tests expect list
+                # For minute snapshot request only a short recent window: 2 hours
+                # (gives ~4 halfhour bars). Fallback to a small backfill if helper fails.
                 try:
-                    halfhours = ib_client.download_halfhours(tk, duration="31 D") or []
+                    # IB historical duration units do not accept 'H'. Use seconds (S) for hour-level short requests.
+                    # 2 hours = 7200 seconds
+                    halfhours = ib_client.download_halfhours(tk, duration="1 D") or []
                 except Exception:
-                    # fallback to backfill helper if available (shouldn't be used in minute path)
-                    halfhours = backfill_halfhours_sequential(ib_client, tk, target_bars=31)
+                    # fallback to backfill helper with a small target (4 halfhours)
+                    halfhours = backfill_halfhours_sequential(ib_client, tk, target_bars=4)
 
                 # convert to hourly bars using aggregator and persist
                 try:
