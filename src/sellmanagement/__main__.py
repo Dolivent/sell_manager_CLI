@@ -195,17 +195,75 @@ def _cmd_start(args: argparse.Namespace) -> None:
                 seconds_till_next = 0.1
             time.sleep(seconds_till_next)
             try:
-                rows = run_minute_snapshot(ib, tickers, concurrency=getattr(config, 'batch_size', 32))
-                # print table-like output: ticker | last_close | MA(value) | distance_pct
-                from zoneinfo import ZoneInfo
-                dt = datetime.now(tz=ZoneInfo('America/New_York'))
-                date_s = dt.strftime('%Y-%m-%d')
-                time_s = dt.strftime('%H:%M:%S.%f')
-                tz_z = dt.strftime('%z')  # e.g. -0400
+                # Before taking snapshot, refresh live positions and sync assignments
+                try:
+                    from .trace import append_trace
+                    live_positions = ib.positions()
+                    live_tickers = []
+                    for p in live_positions:
+                        try:
+                            contract = getattr(p, 'contract', None) or getattr(p, 'contract', None)
+                            if contract is None:
+                                continue
+                            symbol = getattr(contract, 'symbol', None) or getattr(contract, 'localSymbol', None)
+                            exchange = getattr(contract, 'exchange', None) or 'SMART'
+                            if symbol:
+                                live_tickers.append(f"{exchange}:{symbol}")
+                        except Exception:
+                            continue
+                    if live_tickers:
+                        try:
+                            # sync assignment file to current positions (preserve existing assignments)
+                            sync_result = sync_assignments_to_positions(live_tickers)
+                            append_trace({"event": "sync_assignments_before_snapshot", "summary": sync_result})
+                            # restrict snapshot to live tickers to avoid acting on closed positions
+                            tickers = live_tickers
+                        except Exception as e:
+                            append_trace({"event": "sync_assignments_failed", "error": str(e)})
+                except Exception:
+                    # best-effort: proceed even if positions sync fails
+                    pass
+
+                # run_minute_snapshot now returns (ts_iso_ny, rows)
+                ts, rows = run_minute_snapshot(ib, tickers, concurrency=getattr(config, 'batch_size', 32))
+                # parse snapshot timestamp (should be America/New_York aware ISO)
+                try:
+                    ts_dt = datetime.fromisoformat(ts)
+                except Exception:
+                    # fallback to current NY time
+                    from zoneinfo import ZoneInfo
+                    ts_dt = datetime.now(tz=ZoneInfo('America/New_York'))
+
+                date_s = ts_dt.strftime('%Y-%m-%d')
+                time_s = ts_dt.strftime('%H:%M:%S.%f')
+                tz_z = ts_dt.strftime('%z')  # e.g. -0400
                 tz_s = (tz_z[:3] + ':' + tz_z[3:]) if tz_z else ''
                 print("\nMinute snapshot at:")
                 print(date_s)
                 print(time_s)
+                print(tz_s)
+                # trigger signal generator directly as a waterfall (use snapshot timestamp)
+                try:
+                    from .signal_generator import generate_signals_from_rows
+                    from .trace import append_trace
+                    # evaluate based on the snapshot timestamp
+                    is_top_of_hour = (ts_dt.minute == 0)
+                    is_eod_prep = (ts_dt.hour == 15 and ts_dt.minute == 59 and ts_dt.second >= 55)
+                    evaluate_hourly = is_top_of_hour or is_eod_prep
+                    evaluate_daily = is_eod_prep
+                    if evaluate_hourly or evaluate_daily:
+                        append_trace({"event": "signal_evaluation_start", "hourly": bool(evaluate_hourly), "daily": bool(evaluate_daily), "ts": ts})
+                        gen = generate_signals_from_rows(rows, evaluate_hourly=evaluate_hourly, evaluate_daily=evaluate_daily, dry_run=bool(config.dry_run))
+                        append_trace({"event": "signal_evaluation_done", "count": len(gen), "ts": datetime.now(tz=ts_dt.tzinfo).isoformat()})
+                        try:
+                            print(f"Signals generated: {len(gen)}")
+                        except Exception:
+                            pass
+                except Exception as e:
+                    try:
+                        append_trace({"event": "signal_evaluation_failed", "error": str(e)})
+                    except Exception:
+                        pass
                 # formatted table: aligned columns
                 hdr = f"{'ticker':20}{'last_close':>12}{'ma_value':>12}{'distance_pct':>14}{'assigned_ma':>16}{'tf':>6}"
                 print(hdr)

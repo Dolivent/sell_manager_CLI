@@ -27,7 +27,7 @@ def _make_key_from_ticker(ticker: str, timeframe: str = "1D") -> str:
     return f"{ticker}:{gran}"
 
 
-def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) -> List[Dict[str, Any]]:
+def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) -> (str, List[Dict[str, Any]]):
     """Run a minute snapshot:
 
     - Download last 7 days of daily bars for provided tickers
@@ -143,7 +143,78 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
         # defaults
         ma_value = None
         distance_pct = None
-        last_close = closes[-1] if closes else None
+        # determine the chosen bar (prefer the closed bar preceding the snapshot)
+        last_close = None
+        last_bar_date = None
+        try:
+            # snapshot ts is `ts` (NY ISO)
+            from datetime import datetime as _dt
+            try:
+                snap_dt = _dt.fromisoformat(ts)
+            except Exception:
+                snap_dt = None
+
+            chosen = None
+            if bars:
+                # parse bar dates and find the latest bar whose datetime <= snapshot
+                candidates = []
+                last_bar = None
+                for b in bars:
+                    bd = b.get("Date")
+                    if not bd:
+                        continue
+                    try:
+                        bdt = _dt.fromisoformat(str(bd))
+                    except Exception:
+                        bdt = None
+                    if bdt is None:
+                        continue
+                    last_bar = b
+                    # if snapshot time available and bar time <= snapshot, consider it
+                    if snap_dt is not None and bdt <= snap_dt:
+                        candidates.append((bdt, b))
+
+                if candidates:
+                    # choose the candidate with the latest datetime
+                    candidates.sort(key=lambda x: x[0])
+                    chosen = candidates[-1][1]
+                else:
+                    # no candidate <= snapshot (e.g., pre-market with future-dated bars missing)
+                    # choose the last available bar (most recent) -- this is the safe fallback
+                    chosen = last_bar if last_bar is not None else (bars[-1] if bars else None)
+
+            if chosen:
+                # For daily timeframe: if snapshot is before market open (09:30 NY)
+                # and IB returned a same-day daily row, prefer previous day's row.
+                try:
+                    if tf.strip().upper() not in ("1H", "H", "HOURLY"):
+                        try:
+                            # chosen.get('Date') is like 'YYYY-MM-DD'
+                            from datetime import date as _date
+                            bar_date_str = str(chosen.get('Date'))
+                            bar_date = _dt.fromisoformat(bar_date_str).date()
+                            snap_date = snap_dt.date() if snap_dt is not None else None
+                            if snap_date is not None and bar_date == snap_date:
+                                # only prefer previous-day when before market open (09:30)
+                                before_open = (snap_dt.hour < 9) or (snap_dt.hour == 9 and snap_dt.minute < 30)
+                                if before_open:
+                                    prev_daily = [b for b in bars if str(b.get('Date')) != bar_date_str]
+                                    if prev_daily:
+                                        chosen = prev_daily[-1]
+                        except Exception:
+                            # non-ISO or unexpected date string; ignore and continue
+                            pass
+                except Exception:
+                    pass
+
+                try:
+                    last_close = float(chosen.get('Close')) if chosen.get('Close') is not None else None
+                except Exception:
+                    last_close = None
+                last_bar_date = chosen.get('Date')
+        except Exception:
+            last_close = closes[-1] if closes else None
+            last_bar_date = bars[-1].get('Date') if bars else None
 
         # compute MA only when assignment timeframe exists in the corresponding cache
         if ass and bars:
@@ -182,6 +253,7 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
             "assigned_ma": f"{ass.get('type') or ''}({ass.get('length') or ''})" if ass else None,
             "ma_value": None if ma_value is None else float(ma_value),
             "last_close": None if last_close is None else float(last_close),
+            "last_bar_date": last_bar_date,
             "distance_pct": None if distance_pct is None else float(distance_pct),
         }
         rows.append(row)
@@ -191,6 +263,7 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
         f.write(json.dumps({"ts": ts, "rows": rows}, ensure_ascii=False) + "\n")
 
     append_trace({"event": "minute_snapshot_done", "tickers": tickers, "count": len(rows)})
-    return rows
+    # return timestamp (ISO NY) and rows so callers can trigger downstream flows
+    return ts, rows
 
 
