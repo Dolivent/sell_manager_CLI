@@ -39,8 +39,8 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
     """
 
     # use America/New_York timezone for all snapshot timestamps
-    ts = datetime.now(tz=ZoneInfo("America/New_York")).isoformat()
-    append_trace({"event": "minute_snapshot_start", "tickers": tickers, "ts": ts})
+    start_ts = datetime.now(tz=ZoneInfo("America/New_York")).isoformat()
+    append_trace({"event": "minute_snapshot_start", "tickers": tickers, "start_ts": start_ts})
 
     snap_start = time.perf_counter()
 
@@ -147,10 +147,10 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
         last_close = None
         last_bar_date = None
         try:
-            # snapshot ts is `ts` (NY ISO)
+            # snapshot ts is `start_ts` (NY ISO)
             from datetime import datetime as _dt
             try:
-                snap_dt = _dt.fromisoformat(ts)
+                snap_dt = _dt.fromisoformat(start_ts)
             except Exception:
                 snap_dt = None
 
@@ -256,7 +256,7 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
             tf_display = 'H' if tf in ("1H", "H", "HOURLY") else 'D'
 
         row = {
-            "ts": ts,
+            "ts": start_ts,
             "ticker": tk,
             "assigned_type": ass.get('type') if ass else None,
             "assigned_length": int(ass.get('length')) if ass else None,
@@ -270,11 +270,14 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
         rows.append(row)
 
     # append everything into one log record per minute (array of rows)
+    # capture end timestamp (when processing finished) for caller display
+    end_ts = datetime.now(tz=ZoneInfo("America/New_York")).isoformat()
     with LOG_PATH.open("a", encoding="utf-8") as f:
-        f.write(json.dumps({"ts": ts, "rows": rows}, ensure_ascii=False) + "\n")
+        # preserve previous field name for compatibility but include both timestamps
+        f.write(json.dumps({"start_ts": start_ts, "end_ts": end_ts, "rows": rows}, ensure_ascii=False) + "\n")
 
-    append_trace({"event": "minute_snapshot_done", "tickers": tickers, "count": len(rows)})
-    # return timestamp (ISO NY) and rows so callers can trigger downstream flows
-    return ts, rows
+    append_trace({"event": "minute_snapshot_done", "tickers": tickers, "count": len(rows), "end_ts": end_ts})
+    # return end timestamp (ISO NY) and rows so callers can display the completion time
+    return end_ts, rows
 
 

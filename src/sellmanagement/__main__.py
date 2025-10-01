@@ -304,12 +304,9 @@ def _cmd_start(args: argparse.Namespace) -> None:
 
                 date_s = ts_dt.strftime('%Y-%m-%d')
                 time_s = ts_dt.strftime('%H:%M:%S.%f')
-                tz_z = ts_dt.strftime('%z')  # e.g. -0400
-                tz_s = (tz_z[:3] + ':' + tz_z[3:]) if tz_z else ''
                 print("\nMinute snapshot at:")
                 print(date_s)
                 print(time_s)
-                print(tz_s)
                 # trigger signal generator directly as a waterfall (use snapshot timestamp)
                 try:
                     from .signal_generator import generate_signals_from_rows
