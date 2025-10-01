@@ -180,6 +180,14 @@ def _cmd_start(args: argparse.Namespace) -> None:
     try:
         print("Entering minute snapshot loop. Press Ctrl+C to stop.")
         import time
+        from .trace import append_trace
+
+        # Heartbeat/gap-detection: remember last wake time and detect large gaps
+        # to handle sleep/screensaver/wake events. We log a regular heartbeat each
+        # minute and a special "woke_late" event if we detect we've been paused.
+        last_wake = None
+        heartbeat_interval = 60.0
+
         while True:
             # wait until next top of minute (use America/New_York timezone)
             from zoneinfo import ZoneInfo
@@ -193,7 +201,36 @@ def _cmd_start(args: argparse.Namespace) -> None:
                 seconds_till_next = (next_min - now).total_seconds()
             if seconds_till_next < 0.1:
                 seconds_till_next = 0.1
-            time.sleep(seconds_till_next)
+
+            # Sleep in small chunks so Ctrl+C is responsive
+            slept = 0.0
+            chunk = min(5.0, seconds_till_next)
+            while slept + 0.0001 < seconds_till_next:
+                to_sleep = min(chunk, seconds_till_next - slept)
+                time.sleep(to_sleep)
+                slept += to_sleep
+
+            # detect wake/gap: compare wall-clock now to last_wake
+            woke_at = datetime.now(tz=ZoneInfo('America/New_York'))
+            if last_wake is None:
+                last_wake = woke_at
+            else:
+                gap = (woke_at - last_wake).total_seconds()
+                # If gap is significantly larger than heartbeat interval, we likely
+                # resumed from sleep/screensaver. Log a special event with gap info.
+                if gap > (heartbeat_interval * 1.5):
+                    try:
+                        append_trace({"event": "woke_late", "gap_seconds": gap, "reason": "suspiciously_large_gap"})
+                    except Exception:
+                        pass
+                last_wake = woke_at
+
+            # Emit a heartbeat trace so external monitors know process is alive
+            try:
+                append_trace({"event": "heartbeat", "ts": datetime.now(tz=ZoneInfo('America/New_York')).isoformat()})
+            except Exception:
+                pass
+
             try:
                 # Before taking snapshot, refresh live positions and sync assignments
                 try:
