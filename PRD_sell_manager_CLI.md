@@ -511,3 +511,47 @@ What to cross-check / borrow as patterns:
 - Request/response robustness: inspect `Snappy`'s message loop and error codes handling for ideas on demoting IB warnings, mapping server codes to connection states, and surfacing errors to the CLI.
 
 Actionable note for implementers: when reusing patterns from `dolichart/` and `Snappy/`, copy the architectural idea and tests but implement fresh, small, well-scoped modules in `sellmanagement/` (keep files < 300 lines). Ensure unit tests cover reconnection, rate-limiter behavior, and that `--dry-run` never calls `placeOrder()` in tests.
+
+## 🔎 Implementation audit vs code (auto-generated)
+
+This section lists the PRD statements and whether they are implemented in the current codebase (as of this commit). For mismatches I note the file(s) and the suggested action.
+
+- **Connect to IB on port 4001 and fetch positions/open orders**: Implemented. See `src/sellmanagement/__main__.py` (_cmd_start) using `IBClient` which calls `ib_insync.IB.connect()` in `src/sellmanagement/ib_client.py`. (OK)
+
+- **Assigned MA CSV: `config/assigned_ma.csv` with columns `ticker,type,length,timeframe` and interactive prompts on missing rows**: Implemented. `src/sellmanagement/assign.py` and interactive flows in `src/sellmanagement/__main__.py` use `sync_assignments_to_positions` and `set_assignment`. Note: CSV header includes `timeframe` (code uses `timeframe`) — PRD header earlier omitted timeframe in some examples; update PRD to include timeframe column. (Minor doc update)
+
+- **Download 1Y daily + 31D 30m and aggregate to hourly, sequential backfill per ticker, batch concurrency**: Mostly implemented. `src/sellmanagement/downloader.py` provides `batch_download_daily`, `_sequential_backfill_halfhours` and `persist_batch_halfhours` which perform sequential 31-bar slices and aggregation via `src/sellmanagement/aggregation.py`. Concurrency is implemented as batch processing (batch_size param) rather than an asyncio Semaphore; the implementation is synchronous with polite sleeps (OK but differs from async description). Action: Update PRD to reflect synchronous batch implementation and config knobs (`batch_size`, `batch_delay`) defined in `src/sellmanagement/config.py`.
+
+- **Cache format and helpers**: Implemented as NDJSON under `config/cache/` with helpers in `src/sellmanagement/cache.py` using keys like `EXCHANGE__TICKER:1h` (OK). PRD recommended parquet/SQLite; code uses NDJSON. Update PRD to reflect NDJSON implementation.
+
+- **Indicators (SMA/EMA for 5,10,20,50,100,150,200)**: Implemented in `src/sellmanagement/indicators.py` with `compute_sma_series_all` and `compute_ema_series_all`, plus enrichment helpers (OK).
+
+- **Minute snapshot schedule: every minute fetch short durations and merge into cache**: Implemented by `run_minute_snapshot` in `src/sellmanagement/minute_snapshot.py` and the CLI's minute loop in `src/sellmanagement/__main__.py`. The PRD said fetch 7D daily + 1D hourly; code fetches `2 D` for daily-assigned tickers and `1 D` halfhour for hourly-assigned tickers. Update PRD to match implemented durations (`2 D` daily, `1 D` halfhours).
+
+- **Signal evaluation at top-of-hour**: Implemented. `__main__.py` computes `is_top_of_hour` and calls `generate_signals_from_rows` in `src/sellmanagement/signal_generator.py`, which uses `last_close < ma_value` to decide SellSignal. Signals are logged with `src/sellmanagement/signals.py` into `logs/signals.jsonl`. (OK)
+
+- **Signal logger / audit**: Implemented as JSONL `logs/signals.jsonl` in `src/sellmanagement/signals.py` and `signal_generator.append_signal` (OK). Note PRD suggested CSV/JSONL examples; code uses JSONL.
+
+- **Order preparation & safety checks**: Partial. `src/sellmanagement/orders.py` provides `prepare_close_order` and `execute_order` with dry-run default. However, the code's `execute_order` expects `ib_client.place_order(...)` for live execution, but `IBClient` does not implement `place_order` in `ib_client.py` — the `IBClient` class exposes `download_daily`, `download_halfhours`, `positions`, `openOrders`, `connect`, `disconnect` but no `place_order`. The Cli currently never calls `orders.execute_order`. Action: PRD should mark order submission/live execution as TODO and describe required `place_order` adapter in `IBClient` and a safe gating flow (`--live` confirmation and global caps). (Major code TODO)
+
+- **CLI flags**: Implemented subset. `__main__.py` supports `--no-rth`, `--dry-run` (default True), `--live`, and `--client-id`. PRD listed `--config`, `--log-dir`, `--concurrency`, `--cache-dir` which are not implemented. Update PRD to match current flags and mark the others as future enhancements.
+
+- **Tests**: Some unit tests exist for aggregation/backfill (per PRD note), but a full test suite is not present in the repository root. Mark tests as partial/ongoing. (TODO)
+
+- **Other NFRs (reconnect/backoff, adaptive rate-limiter)**: Only basic polite sleeps and try/except traces are present; no adaptive rate limiter or reconnection manager. `IBClient.connect` raises on failure but no automatic reconnect loop exists. Mark these as remaining work.
+
+
+## ✅ Quick code vs PRD summary (high-level)
+- Implemented: IB connect + positions fetch, assigned-MA CSV and interactive assignment flow, NDJSON cache, downloader/backfill + aggregation, indicators, minute snapshot loop, signal generation and JSONL audit logging.
+- Partially implemented / differs: concurrency model is batch/sleep-based (not full async semaphore), cache format NDJSON (PRD suggested parquet/SQLite), snapshot durations differ slightly (`2 D` daily vs PRD's 7D), CLI flags limited.
+- Missing / TODO: live order placement adapters (`place_order`), strong safety gating for live mode, adaptive pacing/rate-limiter, reconnect manager, comprehensive CLI flags, and CI/test harness.
+
+
+## Remaining implementation items (actionable)
+- Implement `IBClient.place_order` adapter and wire `orders.execute_order` into the top-level hourly flow with safety checks (re-fetch positions/openOrders, size caps, idempotency). (High priority)
+- Add live-mode gating: explicit one-time CLI confirmation, environment secret, and `transmit=False/True` pattern if using advanced IB orders. (High priority)
+- Implement reconnect/backoff and connection manager around `IBClient` to satisfy NFR1. (Medium)
+- Add adaptive rate-limiter or token-bucket for historical requests (per-minute/hour buckets) instead of static sleeps. (Medium)
+- Add CLI flags: `--config`, `--log-dir`, `--concurrency`, `--cache-dir` and make `Config` respect them. (Low)
+- Expand unit tests and CI configuration (pytest + mocks for `ib_insync`). (Medium)
+- Add `place_order` tests and safety tests ensuring `--dry-run` never places orders. (High)
