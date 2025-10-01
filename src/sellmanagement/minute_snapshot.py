@@ -1,11 +1,13 @@
 from datetime import datetime
 import json
+import time
 from pathlib import Path
 from typing import List, Dict, Any
 
 from .assign import get_assignments_list
 from .cache import merge_bars, _key_to_path, load_bars
 from .downloader import batch_download_daily, backfill_halfhours_sequential
+from .aggregation import aggregate_halfhours_to_hours
 from .trace import append_trace
 from .indicators import compute_sma_series_all, compute_ema_series_all
 
@@ -38,6 +40,8 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
     ts = datetime.utcnow().isoformat()
     append_trace({"event": "minute_snapshot_start", "tickers": tickers, "ts": ts})
 
+    snap_start = time.perf_counter()
+
     # load assignments in file order and partition tickers by assigned timeframe
     assignments = {r.get('ticker'): r for r in get_assignments_list()}
     daily_tickers: List[str] = []
@@ -55,7 +59,19 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
     # rows collects per-ticker snapshot rows
     rows: List[Dict[str, Any]] = []
     if daily_tickers:
+        batch_submitted_ts = datetime.utcnow().isoformat()
+        t0 = time.perf_counter()
         results = batch_download_daily(ib_client, daily_tickers, batch_size=concurrency, batch_delay=0, duration="2 D")
+        t1 = time.perf_counter()
+        batch_returned_ts = datetime.utcnow().isoformat()
+        append_trace({
+            "event": "batch_download_daily_done",
+            "tickers": daily_tickers,
+            "submitted_ts": batch_submitted_ts,
+            "returned_ts": batch_returned_ts,
+            "duration_ms": (t1 - t0) * 1000.0,
+            "count": len(results),
+        })
 
     for tk in tickers:
         ass = assignments.get(tk, None)
@@ -69,15 +85,30 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
             # and instead request a single 31-bar slice for efficiency.
             try:
                 halfhours = []
-                # For minute snapshot request only a short recent window: 2 hours
-                # (gives ~4 halfhour bars). Fallback to a small backfill if helper fails.
+                # For minute snapshot request only a short recent window. Measure download time.
                 try:
-                    # IB historical duration units do not accept 'H'. Use seconds (S) for hour-level short requests.
-                    # 2 hours = 7200 seconds
+                    download_submitted_ts = datetime.utcnow().isoformat()
+                    dl0 = time.perf_counter()
                     halfhours = ib_client.download_halfhours(tk, duration="1 D") or []
+                    dl1 = time.perf_counter()
+                    download_returned_ts = datetime.utcnow().isoformat()
+                    per_dl_ms = (dl1 - dl0) * 1000.0
                 except Exception:
-                    # fallback to backfill helper with a small target (4 halfhours)
+                    download_submitted_ts = datetime.utcnow().isoformat()
+                    bf0 = time.perf_counter()
                     halfhours = backfill_halfhours_sequential(ib_client, tk, target_bars=4)
+                    bf1 = time.perf_counter()
+                    download_returned_ts = datetime.utcnow().isoformat()
+                    per_dl_ms = (bf1 - bf0) * 1000.0
+                # record per-ticker download time and submitted/returned timestamps in trace
+                append_trace({
+                    "event": "halfhours_download_done",
+                    "token": tk,
+                    "download_ms": per_dl_ms,
+                    "count": len(halfhours),
+                    "submitted_ts": download_submitted_ts,
+                    "returned_ts": download_returned_ts,
+                })
 
                 # convert to hourly bars using aggregator and persist
                 try:
