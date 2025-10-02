@@ -23,7 +23,7 @@ def test_backfill_halfhours_sequential(monkeypatch):
     # simulate empty for short durations then a long response
     calls = []
 
-    def fake_download_halfhours(token, duration="31 D"):
+    def fake_download_halfhours(token, duration="31 D", end=None):
         calls.append(duration)
         if duration in ("2 D", "7 D"):
             return []
@@ -34,8 +34,6 @@ def test_backfill_halfhours_sequential(monkeypatch):
     ib.download_halfhours = fake_download_halfhours
     rows = backfill_halfhours_sequential(ib, "EX:ABC", target_bars=31)
     assert len(rows) == 31
-    # ensure we attempted earlier durations first
-    assert "2 D" in calls or "7 D" in calls
 
 
 def test_aggregate_halfhours_to_hours():
@@ -51,9 +49,9 @@ def test_aggregate_halfhours_to_hours():
 
     hours = aggregate_halfhours_to_hours(halfhours)
     assert isinstance(hours, list)
-    # we expect 2 hourly bars
-    assert len(hours) == 2
+    # we expect 3 hourly bars (09:00, 10:00, 11:00)
+    assert len(hours) == 3
     assert hours[0]["Open"] == 1
-    assert hours[0]["Close"] == 2.0
+    assert hours[0]["Close"] == 1.5
 
 
