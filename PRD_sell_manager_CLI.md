@@ -127,9 +127,13 @@
 ### Minute updater
 
 * At **start of every minute** (when system clock ticks to next minute):
-  * Fetch 7D daily + a short 31-bar 30m slice for each ticker (small requests). For tickers assigned to hourly timeframe, aggregate the returned 30m slice to hourly and merge into the hourly cache.
+  * Fetch short recent bars for each ticker (implementation currently requests `2 D` for daily-assigned tickers and `1 D` half-hour slices for hourly-assigned tickers). For tickers assigned to hourly timeframe, aggregate the returned 30m slice to hourly and merge into the hourly cache.
   * Do NOT perform multi-slice backfills during minute snapshots — only the single short slice is requested and merged. This keeps per-minute CPU/network usage small.
-  * Merge into cache, recompute MAs for changed bars, update CLI table.
+  * Also fetch authoritative `positions()` and `openOrders()` from IB each minute (best-effort). Open orders are parsed for candidate stop prices (fields like `auxPrice`, `trailStopPrice`, `triggerPrice`, `stopPrice`) and associated to tickers using the returned `contract` when available or by inspecting textual fields (e.g. `ocaGroup` / `orderRef`).
+  * Compute an additional per-ticker boolean field `abv_be` and include it in the snapshot and CLI table. `abv_be` is used as a safety gate for sell decisions and is currently defined as:
+    - `True` when the snapshot `last_close` is strictly above the position `avgCost` AND the assigned `ma_value` is strictly above the position `avgCost`.
+    - (Implementation note) previously `abv_be` also considered the presence of an open-order stop price below the MA; this was simplified to the above definition. We can change it to require both the price/MA conditions and a stop order below the MA if desired.
+  * Merge into cache, recompute MAs for changed bars, update CLI table (the CLI now prints timeframe before the assigned MA, and sorts rows so tickers with `abv_be == True` appear first).
 
 ### Hourly evaluator & order flow
 
