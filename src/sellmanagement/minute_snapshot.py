@@ -44,6 +44,129 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
 
     snap_start = time.perf_counter()
 
+    # Fetch current open orders and live positions to enrich snapshot rows (best-effort)
+    try:
+        open_orders_raw = ib_client.openOrders() or []
+    except Exception:
+        open_orders_raw = []
+
+    try:
+        live_positions_raw = ib_client.positions() or []
+    except Exception:
+        live_positions_raw = []
+
+    # Build a mapping ticker -> avgCost from live positions
+    pos_avg_map = {}
+    for p in (live_positions_raw or []):
+        try:
+            contract = getattr(p, 'contract', None) if not isinstance(p, dict) else p.get('contract')
+            if contract is None:
+                continue
+            symbol = getattr(contract, 'symbol', None) if not isinstance(contract, dict) else contract.get('symbol')
+            exchange = getattr(contract, 'exchange', None) if not isinstance(contract, dict) else contract.get('exchange')
+            if not symbol:
+                continue
+            token = f"{exchange or 'SMART'}:{symbol}"
+            avg_cost = getattr(p, 'avgCost', None) if not isinstance(p, dict) else p.get('avgCost')
+            try:
+                pos_avg_map[token] = float(avg_cost) if avg_cost is not None else None
+            except Exception:
+                pos_avg_map[token] = None
+        except Exception:
+            continue
+
+    # Build a mapping ticker -> list of stop prices from open orders (best-effort matching)
+    orders_map = {}
+    def _get_attr(obj, name):
+        if isinstance(obj, dict):
+            return obj.get(name)
+        return getattr(obj, name, None)
+
+    import re
+
+    ticker_re = re.compile(r"([A-Za-z]{1,6}:[A-Za-z0-9\.-_]{1,12})")
+    for o in (open_orders_raw or []):
+        try:
+            raw = o
+            # Support cases where openOrders returns tuples like (order, orderState, contract)
+            parts = []
+            if isinstance(raw, (list, tuple)):
+                parts = list(raw)
+            else:
+                parts = [raw]
+
+            # try to find contract-like and order-like pieces inside the parts
+            contract_obj = None
+            order_obj = None
+            for part in parts:
+                if part is None:
+                    continue
+                # detect contract by symbol/exchange
+                if _get_attr(part, 'symbol') or (isinstance(part, dict) and part.get('symbol')):
+                    contract_obj = part
+                # detect order-like by presence of common order fields
+                if any(_get_attr(part, f) is not None for f in ('auxPrice', 'trailStopPrice', 'triggerPrice', 'stopPrice')):
+                    order_obj = part
+
+            token = None
+            if contract_obj:
+                csym = _get_attr(contract_obj, 'symbol') if not isinstance(contract_obj, dict) else contract_obj.get('symbol')
+                cex = _get_attr(contract_obj, 'exchange') if not isinstance(contract_obj, dict) else contract_obj.get('exchange')
+                if csym:
+                    token = f"{cex or 'SMART'}:{csym}"
+
+            # fallback: inspect textual fields like ocaGroup/orderRef across all parts
+            if token is None:
+                for part in parts:
+                    for field in ('ocaGroup', 'orderRef'):
+                        fv = _get_attr(part, field) or ''
+                        if not fv:
+                            continue
+                        # first try regex to extract EXCHANGE:SYMBOL pattern
+                        m = ticker_re.search(str(fv))
+                        if m:
+                            token = m.group(1)
+                            break
+                        # fallback: search for any assigned ticker symbol inside the string
+                        for tk in (tickers or []):
+                            if tk in str(fv):
+                                token = tk
+                                break
+                        if token:
+                            break
+                    if token:
+                        break
+
+            # extract stop price candidates from order_obj first, then top-level
+            stop_price = None
+            candidates = []
+            if order_obj is not None:
+                for f in ('auxPrice', 'trailStopPrice', 'triggerPrice', 'stopPrice'):
+                    v = _get_attr(order_obj, f)
+                    if v is not None:
+                        candidates.append(v)
+            # also check top-level raw object for fields
+            for f in ('auxPrice', 'trailStopPrice', 'triggerPrice', 'stopPrice'):
+                v = _get_attr(raw, f)
+                if v is not None:
+                    candidates.append(v)
+
+            for v in candidates:
+                try:
+                    sp = float(v)
+                    # skip sentinel large values used by IB to indicate not-set
+                    if sp > 1e10:
+                        continue
+                    stop_price = sp
+                    break
+                except Exception:
+                    continue
+
+            if token and stop_price is not None:
+                orders_map.setdefault(token, []).append(stop_price)
+        except Exception:
+            continue
+
     # load assignments in file order and partition tickers by assigned timeframe
     assignments = {r.get('ticker'): r for r in get_assignments_list()}
     daily_tickers: List[str] = []
@@ -281,6 +404,24 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
             "last_bar_date": last_bar_date,
             "distance_pct": None if distance_pct is None else float(distance_pct),
         }
+
+        # compute 'abv_be' per requested change: true if
+        #  - last_close > avgCost for the position AND
+        #  - ma_value > avgCost for the position
+        try:
+            abv = False
+            avg_for_pos = pos_avg_map.get(tk)
+            last_cl = row.get('last_close')
+            ma_val = row.get('ma_value')
+            if avg_for_pos is not None and last_cl is not None and ma_val is not None:
+                try:
+                    if float(last_cl) > float(avg_for_pos) and float(ma_val) > float(avg_for_pos):
+                        abv = True
+                except Exception:
+                    abv = False
+            row['abv_be'] = bool(abv)
+        except Exception:
+            row['abv_be'] = False
         rows.append(row)
 
     # append everything into one log record per minute (array of rows)
