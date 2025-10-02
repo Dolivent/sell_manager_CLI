@@ -396,7 +396,7 @@ def _cmd_start(args: argparse.Namespace) -> None:
                     except Exception:
                         pass
                 # formatted table: aligned columns
-                hdr = f"{'ticker':20}{'last_close':>12}{'ma_value':>12}{'distance_pct':>14}{'assigned_ma':>16}{'tf':>6}{'abv_be':>8}"
+                hdr = f"{'ticker':20}{'last_close':>12}{'ma_value':>12}{'distance_pct':>14}{'assigned_ma':>20}{'abv_be':>8}"
                 print(hdr)
                 for r in rows:
                     tk = r.get('ticker') or ''
@@ -430,12 +430,14 @@ def _cmd_start(args: argparse.Namespace) -> None:
 
                     am = r.get('assigned_ma') or '-'
                     tf = r.get('assigned_timeframe') or '-'
+                    # move timeframe in front of assigned_ma and drop separate tf column
+                    assigned_display = f"{tf} {am}" if am and tf else (am or '-')
                     abv_be_val = r.get('abv_be')
                     if abv_be_val is None:
                         abv_s = '-'
                     else:
                         abv_s = 'T' if bool(abv_be_val) else 'F'
-                    print(f"{tk:20}{last_s:>12}{ma_s:>12}{dist_s:>14}{am:>16}{tf:>6}{abv_s:>8}")
+                    print(f"{tk:20}{last_s:>12}{ma_s:>12}{dist_s:>14}{assigned_display:>20}{abv_s:>8}")
             except KeyboardInterrupt:
                 raise
             except Exception as e:
