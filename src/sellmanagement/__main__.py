@@ -396,6 +396,11 @@ def _cmd_start(args: argparse.Namespace) -> None:
                     except Exception:
                         pass
                 # formatted table: aligned columns
+                # show rows with abv_be True first
+                try:
+                    rows = sorted(rows, key=lambda r: (not bool(r.get('abv_be'))))
+                except Exception:
+                    pass
                 hdr = f"{'ticker':20}{'last_close':>12}{'ma_value':>12}{'distance_pct':>14}  {'assigned_ma':>18}{'abv_be':>8}"
                 print(hdr)
                 for r in rows:
