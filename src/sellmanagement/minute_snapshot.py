@@ -112,9 +112,23 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
                     "returned_ts": download_returned_ts,
                 })
 
-                # convert to hourly bars using aggregator and persist
+                # persist recent halfhours into 30m cache, then aggregate full 30m -> 1h
                 try:
-                    hourly = aggregate_halfhours_to_hours(halfhours)
+                    key30 = f"{tk}:30m"
+                    # merge new halfhour slice into 30m cache so cache stays current
+                    try:
+                        merge_bars(key30, halfhours)
+                    except Exception:
+                        append_trace({"event": "merge_30m_from_snapshot_failed", "token": tk})
+
+                    # load full 30m cache and aggregate to hourly
+                    try:
+                        full_halfhours = load_bars(key30)
+                        hourly = aggregate_halfhours_to_hours(full_halfhours)
+                    except Exception:
+                        # fallback: aggregate from the downloaded slice if cache load fails
+                        hourly = aggregate_halfhours_to_hours(halfhours)
+
                     if hourly:
                         merge_bars(key, hourly)
                 except Exception:
