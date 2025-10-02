@@ -5,6 +5,8 @@ from .downloader import batch_download_daily, persist_batch_halfhours
 from .cache import merge_bars
 from datetime import datetime, timedelta
 from .minute_snapshot import run_minute_snapshot
+import os
+from .orders import prepare_close_order, execute_order
 import argparse
 from typing import Optional
 
@@ -359,6 +361,33 @@ def _cmd_start(args: argparse.Namespace) -> None:
                         append_trace({"event": "signal_evaluation_done", "count": len(gen), "ts": datetime.now(tz=ts_dt.tzinfo).isoformat()})
                         try:
                             print(f"Signals generated: {len(gen)}")
+                        except Exception:
+                            pass
+
+                        # If live mode requested, attempt to execute sell signals using IB client
+                        try:
+                            if not config.dry_run:
+                                # require explicit environment secret to permit live transmits
+                                live_secret = os.environ.get('SELLMANAGEMENT_LIVE_SECRET')
+                                if not live_secret:
+                                    print('Live mode requested but SELLMANAGEMENT_LIVE_SECRET not set; skipping transmits')
+                                else:
+                                    # one-time confirmation prompt to avoid accidental live orders
+                                    confirm = input('CONFIRM transmit live orders now? Type YES to proceed: ').strip()
+                                    if confirm == 'YES':
+                                        # iterate generated signals and transmit sell orders for SellSignal entries
+                                        for e in gen:
+                                            try:
+                                                if e.get('decision') == 'SellSignal':
+                                                    # prepare a simple close order (Sell 1 unit by default)
+                                                    po = prepare_close_order(e.get('ticker'), 1, order_type='MKT')
+                                                    # execute_order performs prepare->checks->place
+                                                    res = execute_order(ib, po, dry_run=False)
+                                                    append_trace({'event': 'order_attempt', 'ticker': e.get('ticker'), 'result': str(res)})
+                                            except Exception as ex:
+                                                append_trace({'event': 'order_attempt_failed', 'ticker': e.get('ticker'), 'error': str(ex)})
+                                    else:
+                                        print('Live transmit aborted by user; no orders sent')
                         except Exception:
                             pass
                 except Exception as e:

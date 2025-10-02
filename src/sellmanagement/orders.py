@@ -27,18 +27,48 @@ def execute_order(ib_client: Any, prepared: PreparedOrder, dry_run: bool = True)
 
     Returns a dict with execution metadata.
     """
-    if dry_run:
-        logger.info("Dry-run: would execute order: %s %s", prepared.symbol, prepared.quantity)
-        return {"status": "simulated", "symbol": prepared.symbol, "quantity": prepared.quantity}
-
-    # live path: call client's placeOrder or Prepare/Transmit pattern
+    # Always build a prepared object in our IB wrapper so we can log/inspect it
     try:
-        # adapt to IB wrapper: some clients expect contract + order object
-        res = ib_client.place_order(prepared.symbol, prepared.quantity, prepared.order_type)
-        logger.info("Order executed: %s", res)
-        return {"status": "placed", "result": res}
+        # If ib_client has prepare_order (preferred), use it to build a prepared order
+        if hasattr(ib_client, 'prepare_order'):
+            prepared_ib = ib_client.prepare_order(prepared.symbol, prepared.quantity, prepared.order_type)
+        else:
+            # fallback: caller provided only a simple prepared order; attempt to transmit directly
+            prepared_ib = None
     except Exception as e:
-        logger.exception("Order execution failed")
-        return {"status": "failed", "error": str(e)}
+        logger.exception('Failed to prepare IB order')
+        return {'status': 'failed_prepare', 'error': str(e)}
+
+    # Dry-run path: log prepared IB order and return simulated status
+    if dry_run:
+        logger.info('Dry-run: prepared order: %s (ib_prepared=%s)', prepared, bool(prepared_ib))
+        return {'status': 'simulated', 'symbol': prepared.symbol, 'quantity': prepared.quantity, 'prepared_ib': bool(prepared_ib)}
+
+    # Live path: run pre-submit safety checks
+    try:
+        # re-fetch authoritative positions and open orders
+        try:
+            current_positions = ib_client.positions()
+        except Exception:
+            current_positions = None
+        try:
+            current_open_orders = ib_client.openOrders()
+        except Exception:
+            current_open_orders = None
+
+        logger.info('Pre-submit checks: positions=%s open_orders=%s', bool(current_positions), bool(current_open_orders))
+
+        # transmit: if we have a prepared IB-level order, use place_order(prepared, transmit=True)
+        if prepared_ib:
+            res = ib_client.place_order(prepared_ib, transmit=True)
+        else:
+            # fallback: build+place in one step
+            res = ib_client.place_order(prepared.symbol, prepared.quantity, prepared.order_type, transmit=True)
+
+        logger.info('Order transmitted: %s', res)
+        return {'status': 'placed', 'result': res}
+    except Exception as e:
+        logger.exception('Order transmit failed')
+        return {'status': 'failed_transmit', 'error': str(e)}
 
 

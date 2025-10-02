@@ -191,4 +191,82 @@ class IBClient:
             raise RuntimeError("IBClient.openOrders requires a live ib_insync connection")
         return self._ib.openOrders()
 
+    def prepare_order(self, token: str, quantity: int, order_type: str = "MKT", **kwargs) -> Dict[str, Any]:
+        """Prepare an IB order object for the given token and quantity without transmitting it.
+
+        Returns a dict containing 'contract' and 'order' plus metadata. This does NOT submit anything to IB,
+        it merely builds the objects so the caller can inspect/log them before transmitting.
+        """
+        if not self._use_ib or self._ib is None:
+            raise RuntimeError("IBClient.prepare_order requires a live ib_insync connection")
+
+        try:
+            from ib_insync import Stock, MarketOrder, LimitOrder
+        except Exception:
+            raise RuntimeError("ib_insync is required to build IB order objects")
+
+        parts = token.split(":")
+        if len(parts) == 2:
+            exchange, symbol = parts[0], parts[1]
+        else:
+            exchange = 'SMART'
+            symbol = token
+
+        contract = Stock(symbol, exchange, 'USD')
+
+        # Simple order factory: support 'MKT' and 'LMT' (limit via kwargs['limit_price'])
+        ot = (order_type or "MKT").upper()
+        if ot == 'MKT':
+            order = MarketOrder('SELL', quantity)
+        elif ot == 'LMT' or ot == 'LIMIT':
+            limit_price = kwargs.get('limit_price')
+            if limit_price is None:
+                raise ValueError('limit_price is required for LMT orders')
+            order = LimitOrder('SELL', quantity, limit_price)
+        else:
+            # fallback to market order for unknown types
+            order = MarketOrder('SELL', quantity)
+
+        prepared = {
+            'contract': contract,
+            'order': order,
+            'symbol': token,
+            'quantity': quantity,
+            'order_type': ot,
+        }
+        return prepared
+
+    def place_order(self, prepared_or_token, quantity: int | None = None, order_type: str | None = None, transmit: bool = True, **kwargs) -> Dict[str, Any]:
+        """Transmit a prepared order (preferred) or build+transmit from token/quantity/order_type.
+
+        Returns a dict with status and the IB order/openOrder information when available.
+        """
+        if not self._use_ib or self._ib is None:
+            raise RuntimeError("IBClient.place_order requires a live ib_insync connection")
+
+        # accept either prepared dict or token
+        if isinstance(prepared_or_token, dict) and 'contract' in prepared_or_token and 'order' in prepared_or_token:
+            contract = prepared_or_token['contract']
+            order = prepared_or_token['order']
+        else:
+            # build on-the-fly
+            if quantity is None or order_type is None:
+                raise ValueError('quantity and order_type required when not passing a prepared order')
+            prepared = self.prepare_order(prepared_or_token, quantity, order_type, **kwargs)
+            contract = prepared['contract']
+            order = prepared['order']
+
+        # ensure transmit flag is set on the order object if supported
+        try:
+            setattr(order, 'transmit', bool(transmit))
+        except Exception:
+            pass
+
+        try:
+            # ib_insync IB.placeOrder will send the order to IB and return an OrderStatus/Trade depending
+            trade = self._ib.placeOrder(contract, order)
+            return {'status': 'placed', 'trade': trade}
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}
+
 

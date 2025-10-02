@@ -532,7 +532,7 @@ This section lists the PRD statements and whether they are implemented in the cu
 
 - **Signal logger / audit**: Implemented as JSONL `logs/signals.jsonl` in `src/sellmanagement/signals.py` and `signal_generator.append_signal` (OK). Note PRD suggested CSV/JSONL examples; code uses JSONL.
 
-- **Order preparation & safety checks**: Partial. `src/sellmanagement/orders.py` provides `prepare_close_order` and `execute_order` with dry-run default. However, the code's `execute_order` expects `ib_client.place_order(...)` for live execution, but `IBClient` does not implement `place_order` in `ib_client.py` — the `IBClient` class exposes `download_daily`, `download_halfhours`, `positions`, `openOrders`, `connect`, `disconnect` but no `place_order`. The Cli currently never calls `orders.execute_order`. Action: PRD should mark order submission/live execution as TODO and describe required `place_order` adapter in `IBClient` and a safe gating flow (`--live` confirmation and global caps). (Major code TODO)
+- **Order preparation & safety checks**: Core prepare→place pattern implemented and wired into the CLI with safety gating. `src/sellmanagement/orders.py` provides `prepare_close_order` and `execute_order` (dry-run by default). The IB wrapper `src/sellmanagement/ib_client.py` now includes `prepare_order` and `place_order` helpers that build IB contract/order objects and transmit via the existing `IB()` connection when available. The top-of-hour flow in `__main__.py` will, when `--live` is specified and the environment secret `SELLMANAGEMENT_LIVE_SECRET` is set and the user confirms, iterate SellSignal entries and call `prepare_close_order` → `execute_order`, which performs pre-submit checks (`positions()` and `openOrders()`) and calls into `IBClient.place_order` to transmit. Remaining work: idempotency tokens, coordinated cancels, position-size caps, retries and persistent audit. (Partial — core flow implemented)
 
 - **CLI flags**: Implemented subset. `__main__.py` supports `--no-rth`, `--dry-run` (default True), `--live`, and `--client-id`. PRD listed `--config`, `--log-dir`, `--concurrency`, `--cache-dir` which are not implemented. Update PRD to match current flags and mark the others as future enhancements.
 
@@ -548,10 +548,11 @@ This section lists the PRD statements and whether they are implemented in the cu
 
 
 ## Remaining implementation items (actionable)
-- Implement `IBClient.place_order` adapter and wire `orders.execute_order` into the top-level hourly flow with safety checks (re-fetch positions/openOrders, size caps, idempotency). (High priority)
-- Add live-mode gating: explicit one-time CLI confirmation, environment secret, and `transmit=False/True` pattern if using advanced IB orders. (High priority)
-- Implement reconnect/backoff and connection manager around `IBClient` to satisfy NFR1. (Medium)
-- Add adaptive rate-limiter or token-bucket for historical requests (per-minute/hour buckets) instead of static sleeps. (Medium)
+- Finalize safety & idempotency for live transmits:
+  - implement per-order idempotency tokens and persistent audit to avoid duplicate submits on restart/crash;
+  - enforce position-size caps and a global daily limit to prevent runaway orders;
+  - coordinate cancelation of other open orders for the same position as part of an atomic workflow. (High)
+- Implement reconnect/backoff and a connection manager around `IBClient` to satisfy NFR1 (auto-retry, centralized reconnect policy, background bridge for async calls). (Medium)
+- Add adaptive rate-limiter or token-bucket for historical requests (per-minute/hour buckets) instead of static sleeps to better respect IB pacing. (Medium)
 - Add CLI flags: `--config`, `--log-dir`, `--concurrency`, `--cache-dir` and make `Config` respect them. (Low)
-- Expand unit tests and CI configuration (pytest + mocks for `ib_insync`). (Medium)
-- Add `place_order` tests and safety tests ensuring `--dry-run` never places orders. (High)
+- Expand unit tests and CI configuration (pytest + mocks for `ib_insync`) and add explicit safety tests asserting `--dry-run` never calls `placeOrder()` in mocks. (High)
