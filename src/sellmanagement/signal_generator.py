@@ -95,7 +95,15 @@ def generate_signals_from_rows(rows: List[Dict[str, Any]], evaluate_hourly: bool
             out.append(e)
             continue
 
-        if close_f < ma_f:
+        # New requirement: only emit SellSignal when price closed below MA
+        # AND the snapshot row's `abv_be` flag is True (safety gate)
+        abv_be_flag = row.get('abv_be')
+        try:
+            abv_be = bool(abv_be_flag)
+        except Exception:
+            abv_be = False
+
+        if close_f < ma_f and abv_be:
             dec = "SellSignal"
         else:
             dec = "NoSignal"
