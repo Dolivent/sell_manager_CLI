@@ -12,8 +12,10 @@ Why use this tool
 Important behavior (read first)
 --------------------------------
 - **Positions and open orders are refreshed every minute and printed to your terminal.**
-- **Signals are only generated at the exact top of each hour.** The app monitors continuously but evaluates sell rules only at that boundary.
-- **Current behavior:** when a sell condition is met the app prepares a full-close of the entire position. Partial sells (slicing a portion of the position) are not supported in this version.
+- **Signals are only generated at the exact top of each hour.** The app monitors continuously but evaluates sell rules only at that boundary.for end of day signals, the app uses 3:59:55. 
+- **Signal Conditions:** the signal is only generated if the price is above  breakeven AND the assigned MA is also above break even
+- **New Positions:* when new positions are added, restart the app so that the historical data is downloaded
+- **Current behavior:** when a sell condition is met the app prepares a full-close of the entire position. Partial sells are NOT supported in this version.
 
 Prerequisites
 -------------
@@ -52,9 +54,23 @@ If `requirements.txt` is not present, install the core packages manually:
 pip install ib_insync pandas numpy pyarrow pytest
 ```
 
-3) Create a simple assigned-MA CSV (example)
 
-The tool uses an `assigned_ma.csv` mapping to decide which moving average to apply to each ticker. Create `config/assigned_ma.csv` (you can edit this later with a text editor) with this example contents:
+3) Run the app in dry-run (safe) mode
+
+```bash
+python -m sellmanagement --dry-run
+```
+
+What this does:
+- Connects to IB on `127.0.0.1:4001` by default.
+- Fetches positions and open orders.
+- Downloads recent market data and computes configured MAs.
+- Updates the positions table every minute and evaluates signals at the top of each hour.
+- Appends signal audit records to `logs/signals.jsonl`.
+
+4) Edit assigned-MA CSV (example)
+
+The tool uses the file `assigned_ma.csv` to record which moving average to apply to each ticker. After the first run, you can manually edit `config/assigned_ma.csv` with this example contents:
 
 ```csv
 ticker,type,length,timeframe
@@ -67,20 +83,7 @@ Field notes:
 - `ticker` should be `EXCHANGE:TICKER`, e.g. `NASDAQ:AAPL`.
 - `type` is `SMA` or `EMA` (case-insensitive).
 - `length` must be one of: `5, 10, 20, 50, 100, 150, 200`.
-- `timeframe` for this release should be `1H` (hourly evaluation).
-
-4) Run the app in dry-run (safe) mode
-
-```bash
-python -m sellmanagement --dry-run
-```
-
-What this does:
-- Connects to IB on `127.0.0.1:4001` by default.
-- Fetches positions and open orders.
-- Downloads recent market data and computes configured MAs.
-- Updates the positions table every minute and evaluates signals at the top of each hour.
-- Appends signal audit records to `logs/signals.jsonl`.
+- `timeframe` for this release should be `1H` (hourly evaluation) or `1D` (daily evaluation)
 
 Switching to live mode (WARNING — sends real orders)
 ---------------------------------------------------
