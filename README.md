@@ -12,8 +12,9 @@ Why use this tool
 Important behavior (read first)
 --------------------------------
 - **Positions and open orders are refreshed every minute and printed to your terminal.**
-- **Signals are only generated at the exact top of each hour.** The app monitors continuously but evaluates sell rules only at that boundary.
-- **Current behavior:** when a sell condition is met the app prepares a full-close of the entire position. Partial sells (slicing a portion of the position) are not supported in this version.
+- **Signals are only generated at the exact top of each hour.** The app monitors continuously but evaluates sell rules only at that boundary.for end of day signals, the app uses 3:59:55. 
+- **The signal is only generated if the price is above both breakeven and the assigned MA is also above break even
+- **Current behavior:** when a sell condition is met the app prepares a full-close of the entire position. Partial sells are NOT supported in this version.
 
 Prerequisites
 -------------
