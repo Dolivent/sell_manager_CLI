@@ -269,4 +269,51 @@ class IBClient:
         except Exception as e:
             return {'status': 'error', 'error': str(e)}
 
+    def cancel_order(self, order_or_trade) -> Dict[str, Any]:
+        """Cancel an outstanding IB order. Accepts either an Order object or a Trade.
+
+        Returns a small dict describing the cancel attempt.
+        """
+        if not self._use_ib or self._ib is None:
+            raise RuntimeError("IBClient.cancel_order requires a live ib_insync connection")
+
+        try:
+            # If a Trade was passed, extract the .order where possible
+            order_obj = getattr(order_or_trade, 'order', order_or_trade)
+            # call ib_insync cancel
+            self._ib.cancelOrder(order_obj)
+            return {'status': 'cancel_sent'}
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}
+
+    def get_trade_status(self, trade) -> str:
+        """Return a normalized status string for an ib_insync Trade object.
+
+        Possible outputs: 'filled', 'cancelled', 'done', 'pending', 'unknown'
+        """
+        try:
+            # prefer orderStatus.status when available
+            os = getattr(getattr(trade, 'orderStatus', None), 'status', None)
+            if isinstance(os, str):
+                stat = os.lower()
+                if 'filled' in stat:
+                    return 'filled'
+                if 'cancel' in stat:
+                    return 'cancelled'
+                if 'done' in stat:
+                    return 'done'
+
+            # fallback to trade.isDone() if present
+            is_done = False
+            if hasattr(trade, 'isDone'):
+                try:
+                    is_done = bool(trade.isDone())
+                except Exception:
+                    is_done = False
+            if is_done:
+                return 'done'
+            return 'pending'
+        except Exception:
+            return 'unknown'
+
 

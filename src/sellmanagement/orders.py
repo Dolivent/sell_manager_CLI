@@ -58,15 +58,37 @@ def execute_order(ib_client: Any, prepared: PreparedOrder, dry_run: bool = True)
 
         logger.info('Pre-submit checks: positions=%s open_orders=%s', bool(current_positions), bool(current_open_orders))
 
-        # transmit: if we have a prepared IB-level order, use place_order(prepared, transmit=True)
+        # transmit: delegate to order_manager for full lifecycle handling
         if prepared_ib:
-            res = ib_client.place_order(prepared_ib, transmit=True)
+            prepared_payload = prepared_ib
         else:
-            # fallback: build+place in one step
-            res = ib_client.place_order(prepared.symbol, prepared.quantity, prepared.order_type, transmit=True)
+            prepared_payload = {
+                'symbol': prepared.symbol,
+                'quantity': prepared.quantity,
+                'order_type': prepared.order_type,
+            }
 
-        logger.info('Order transmitted: %s', res)
-        return {'status': 'placed', 'result': res}
+        if dry_run:
+            # keep existing dry-run behavior
+            logger.info('Dry-run: prepared order: %s (ib_prepared=%s)', prepared, bool(prepared_ib))
+            return {'status': 'simulated', 'symbol': prepared.symbol, 'quantity': prepared.quantity, 'prepared_ib': bool(prepared_ib)}
+
+        # live: import and call order_manager
+        try:
+            from . import order_manager
+        except Exception:
+            # fallback to simple place if order_manager unavailable
+            if prepared_ib:
+                res = ib_client.place_order(prepared_ib, transmit=True)
+            else:
+                res = ib_client.place_order(prepared.symbol, prepared.quantity, prepared.order_type, transmit=True)
+            logger.info('Order transmitted (fallback): %s', res)
+            return {'status': 'placed', 'result': res}
+
+        # call the manager which handles wait/cancel/verify
+        lifecycle_res = order_manager.place_and_finalize(ib_client, prepared_payload)
+        logger.info('Order lifecycle result: %s', lifecycle_res)
+        return lifecycle_res
     except Exception as e:
         logger.exception('Order transmit failed')
         return {'status': 'failed_transmit', 'error': str(e)}
