@@ -1,7 +1,132 @@
-# sellmanagement
+Disclaimer: Use at your own risk. The repository owner and contributors accept no liability for trading losses arising from use of this software. By using this tool you acknowledge and accept the financial risks; test thoroughly in a Paper Trading account before enabling live mode.
 
-CLI application to monitor Interactive Brokers (IBKR) positions and prepare full-close sell orders when a position closes below an assigned moving average. Dry-run by default; requires `--live` for actual order submission.
+# sellmanagement — Automated sell-preparation CLI
 
-See `PRD_sell_manager_CLI.md` for full product requirements.
+A small, safe command-line tool that watches your Interactive Brokers (IB) positions and prepares full-close sell orders when a position closes below an assigned moving average. The default mode is dry-run: orders are prepared and logged but never sent.
 
+Why use this tool
+-----------------
+- Automates a single conservative rule: when a position's latest close is strictly below its assigned moving average at the top of the hour, the tool prepares a full-close sell order for that position.
+- Keeps a clear audit trail in `logs/signals.jsonl` so you can review every prepared action.
 
+Important behavior (read first)
+--------------------------------
+- **Positions and open orders are refreshed every minute and printed to your terminal.**
+- **Signals are only generated at the exact top of each hour.** The app monitors continuously but evaluates sell rules only at that boundary.
+- **Current behavior:** when a sell condition is met the app prepares a full-close of the entire position. Partial sells (slicing a portion of the position) are not supported in this version.
+
+Prerequisites
+-------------
+- Python 3.10 or newer. Download: `https://www.python.org/downloads/`
+- Interactive Brokers Gateway or Trader Workstation (TWS) installed and running locally. Download page (IB Gateway & TWS): `https://www.interactivebrokers.com/en/index.php?f=16040`
+- Recommended: use an IB Paper Trading account when testing.
+
+Quick start (copy-paste)
+------------------------
+Open a terminal (Windows PowerShell, macOS Terminal, Linux shell) and run these commands.
+
+1) Clone the repository (or download and extract the zip):
+
+```bash
+# with git installed
+git clone https://example.com/your-repo/sell_manager_CLI.git
+cd sell_manager_CLI
+```
+
+2) Create and activate a Python virtual environment, then install dependencies:
+
+```bash
+python -m venv .venv
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+# macOS / Linux
+source .venv/bin/activate
+
+pip install -U pip
+pip install -r requirements.txt
+```
+
+If `requirements.txt` is not present, install the core packages manually:
+
+```bash
+pip install ib_insync pandas numpy pyarrow pytest
+```
+
+3) Create a simple assigned-MA CSV (example)
+
+The tool uses an `assigned_ma.csv` mapping to decide which moving average to apply to each ticker. Create `config/assigned_ma.csv` (you can edit this later with a text editor) with this example contents:
+
+```csv
+ticker,type,length,timeframe
+NASDAQ:AAPL,SMA,50,1H
+NYSE:IBM,EMA,200,1H
+NASDAQ:MSFT,SMA,20,1H
+```
+
+Field notes:
+- `ticker` should be `EXCHANGE:TICKER`, e.g. `NASDAQ:AAPL`.
+- `type` is `SMA` or `EMA` (case-insensitive).
+- `length` must be one of: `5, 10, 20, 50, 100, 150, 200`.
+- `timeframe` for this release should be `1H` (hourly evaluation).
+
+4) Run the app in dry-run (safe) mode
+
+```bash
+python -m sellmanagement --dry-run
+```
+
+What this does:
+- Connects to IB on `127.0.0.1:4001` by default.
+- Fetches positions and open orders.
+- Downloads recent market data and computes configured MAs.
+- Updates the positions table every minute and evaluates signals at the top of each hour.
+- Appends signal audit records to `logs/signals.jsonl`.
+
+Switching to live mode (WARNING — sends real orders)
+---------------------------------------------------
+Live mode transmits orders to your IB account. Use only after careful testing in a Paper Trading account.
+
+```bash
+python -m sellmanagement --live
+```
+
+Configuration & files
+---------------------
+- `config/assigned_ma.csv` — mapping of tickers to MAs (example above).
+- `logs/signals.jsonl` — append-only audit log for all prepared signals and actions.
+- `config/cache/` — internal cache of downloaded market data.
+
+Interpreting CLI output
+----------------------
+On start and after each update you will see a compact table per ticker showing:
+- `ticker`, `latest close`, `assigned MA`, `MA value`, `percent distance`, `position size`, `open orders`, and `abv_be` (a safety flag used internally).
+
+At the top of each hour, when a sell condition is met, a signal is printed and written to `logs/signals.jsonl` containing timestamp, ticker, close, ma_type, ma_value, distance_pct, and action details.
+
+Common troubleshooting
+----------------------
+- IB connection refused: confirm IB Gateway or TWS is running and logged in. Common IB API ports are `4001` (IB Gateway SSL), `7496` (TWS non-SSL), and `7497` (TWS paper-trading). The app defaults to `127.0.0.1:4001` unless configured otherwise.
+- Missing Python packages: run `pip install -r requirements.txt` or `pip install ib_insync pandas`.
+- Permission errors writing logs: run the app in a folder where you have write permissions.
+
+Contributing & tests
+--------------------
+- Tests use `pytest`. To run tests from the project root:
+
+```bash
+pytest -q
+```
+
+Please run tests locally and validate order flows in a Paper Trading account before using `--live`.
+
+Support
+-------
+If you need help, open an issue or contact the repository owner. Include `logs/signals.jsonl` and your `config/assigned_ma.csv` when requesting help.
+
+Changelog & status
+------------------
+This release implements the CLI, data download, MA computation, and signal logging. Remaining work in the project roadmap includes improved live-mode safety (global caps, idempotency tokens) and an adaptive rate-limiter for IB pacing.
+
+License
+-------
+See `LICENSE` in the repository root.

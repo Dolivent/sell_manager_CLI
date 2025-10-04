@@ -1,16 +1,60 @@
 # Ignore generated and sensitive files
-# ... existing code ...
+# Project-specific sensitive or internal documents
 AUDIT_REPORT.md
 PRD_sell_manager_CLI.md
 
-# Recommended ignores for public export
+# Logs and runtime artifacts
 logs/
-config/cache/
+*.log
+
+# Python caches and virtual environments
 __pycache__/
+*.py[cod]
+*.pyo
+.Python
+env/
 .venv/
+venv/
+
+# Byte-compiled / C extensions
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+
+# Editor/IDE config
 .vscode/
 .idea/
-*.pyc
-*.pyo
-*.pyd
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# Test and coverage outputs
+.pytest_cache/
+coverage.xml
+htmlcov/
+
+# Config cache and secrets
+config/cache/
+config/*.secret
+config/*.key
+
+# Local environment and credentials
+.env
+.env.*
+secrets.yml
+
+# Jupyter
+.ipynb_checkpoints
+
+# Sphinx docs build
+docs/_build/
+
+# Misc
+*.log.*
+config/assigned_ma.csv
+docs/PRD_sell_manager_CLI.md
