@@ -20,6 +20,15 @@ def _cmd_start(args: argparse.Namespace) -> None:
         print("Failed to connect to IB Gateway/TWS")
         return
 
+    # Print config file locations so user can open/edit them if desired
+    try:
+        from .assign import ASSIGNED_CSV
+        from .signals import _log_path as _signals_log_path
+        print(f"Assigned MA CSV: {ASSIGNED_CSV.resolve()}")
+        print(f"Signals log: {_signals_log_path().resolve()}")
+    except Exception:
+        pass
+
     # Determine tickers to fetch (from assignments list) and sync with live positions
     try:
         rows = get_assignments_list()
@@ -367,27 +376,22 @@ def _cmd_start(args: argparse.Namespace) -> None:
                         # If live mode requested, attempt to execute sell signals using IB client
                         try:
                             if not config.dry_run:
-                                # require explicit environment secret to permit live transmits
-                                live_secret = os.environ.get('SELLMANAGEMENT_LIVE_SECRET')
-                                if not live_secret:
-                                    print('Live mode requested but SELLMANAGEMENT_LIVE_SECRET not set; skipping transmits')
+                                # one-time confirmation prompt to avoid accidental live orders
+                                confirm = input('CONFIRM transmit live orders now? Type YES to proceed: ').strip()
+                                if confirm == 'YES':
+                                    # iterate generated signals and transmit sell orders for SellSignal entries
+                                    for e in gen:
+                                        try:
+                                            if e.get('decision') == 'SellSignal':
+                                                # prepare a simple close order (Sell 1 unit by default)
+                                                po = prepare_close_order(e.get('ticker'), 1, order_type='MKT')
+                                                # execute_order performs prepare->checks->place
+                                                res = execute_order(ib, po, dry_run=False)
+                                                append_trace({'event': 'order_attempt', 'ticker': e.get('ticker'), 'result': str(res)})
+                                        except Exception as ex:
+                                            append_trace({'event': 'order_attempt_failed', 'ticker': e.get('ticker'), 'error': str(ex)})
                                 else:
-                                    # one-time confirmation prompt to avoid accidental live orders
-                                    confirm = input('CONFIRM transmit live orders now? Type YES to proceed: ').strip()
-                                    if confirm == 'YES':
-                                        # iterate generated signals and transmit sell orders for SellSignal entries
-                                        for e in gen:
-                                            try:
-                                                if e.get('decision') == 'SellSignal':
-                                                    # prepare a simple close order (Sell 1 unit by default)
-                                                    po = prepare_close_order(e.get('ticker'), 1, order_type='MKT')
-                                                    # execute_order performs prepare->checks->place
-                                                    res = execute_order(ib, po, dry_run=False)
-                                                    append_trace({'event': 'order_attempt', 'ticker': e.get('ticker'), 'result': str(res)})
-                                            except Exception as ex:
-                                                append_trace({'event': 'order_attempt_failed', 'ticker': e.get('ticker'), 'error': str(ex)})
-                                    else:
-                                        print('Live transmit aborted by user; no orders sent')
+                                    print('Live transmit aborted by user; no orders sent')
                         except Exception:
                             pass
                 except Exception as e:
@@ -472,7 +476,7 @@ def main(argv: Optional[list] = None) -> None:
     p_start = sub.add_parser("start", help="Start the sellmanagement service")
     p_start.add_argument("--no-rth", action="store_true", help="Do not restrict historical requests to regular trading hours")
     p_start.add_argument("--dry-run", action="store_true", default=True, help="Run in dry-run mode (default)")
-    p_start.add_argument("--live", action="store_true", help="Enable live mode (must be explicit)")
+    p_start.add_argument("--live", action="store_true", help="Enable live mode (must be explicit). Note: live mode now only requires an interactive confirmation prompt before transmitting orders.")
     p_start.add_argument("--client-id", type=int, default=1)
 
     # metrics and retry commands removed in simplified mode
