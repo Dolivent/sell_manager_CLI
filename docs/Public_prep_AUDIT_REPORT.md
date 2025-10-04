@@ -87,4 +87,11 @@ The following tasks are tracked as actionable items to prepare `sell_manager_CLI
 
 If you want, I can start working on the first in-progress task (`Create clean-and-export.sh`) now.
 
+## 11) Export actions taken
+- Created `clean-and-export.sh` and `scripts/clean_export.py` to produce a sanitized copy at `sell_manager_CLI_clean/` (example usage: `./clean-and-export.sh sell_manager_CLI_clean`).
+- Added `LICENSE`, `config/assigned_ma.example.csv`, and `docs/samples/` with sanitized examples.
+- Created an orphan branch `sell_manager-clean` containing a cleaned root commit suitable for import into a public repository (root commit contains only cleaned snapshot).
+
+If you prefer a different history-preserving export method, I can run `git subtree split` or `git filter-repo` instead.
+
 
