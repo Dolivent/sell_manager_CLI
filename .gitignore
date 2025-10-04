@@ -1,0 +1,4 @@
+# Ignore generated and sensitive files
+# ... existing code ...
+AUDIT_REPORT.md
+PRD_sell_manager_CLI.md
