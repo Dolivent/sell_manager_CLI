@@ -75,4 +75,16 @@ If you'd like, I can now (pick one):
 
 Signed-off-by: automated-audit-bot
 
+## 10) Tracked TODOs
+The following tasks are tracked as actionable items to prepare `sell_manager_CLI` for public extraction. Each item is recorded in the repository TODO list for follow-up.
+
+- **Create clean-and-export.sh**: Remove `logs/` and `config/cache/`, and prepare a cleaned copy for export.
+- **Add recommended ignores to `.gitignore`**: include `logs/`, `config/cache/`, `__pycache__/`, `.venv/`, and IDE files.
+- **Sanitize `config/assigned_ma.csv`**: create an example template and remove sensitive tickers.
+- **Create sanitized sample files**: add `docs/samples/` with example logs and cache files.
+- **Run test suite**: execute `pytest` and report/fix failing tests before public extraction.
+- **Prepare export branch**: extract `sell_manager_CLI` history using `git subtree split` or `git filter-repo`.
+
+If you want, I can start working on the first in-progress task (`Create clean-and-export.sh`) now.
+
 

@@ -2,3 +2,15 @@
 # ... existing code ...
 AUDIT_REPORT.md
 PRD_sell_manager_CLI.md
+
+# Recommended ignores for public export
+logs/
+config/cache/
+__pycache__/
+.venv/
+.vscode/
+.idea/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
