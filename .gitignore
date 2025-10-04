@@ -58,3 +58,6 @@ docs/_build/
 *.log.*
 config/assigned_ma.csv
 docs/PRD_sell_manager_CLI.md
+
+# Ignore top-level docs folder
+docs/
