@@ -94,4 +94,14 @@ If you want, I can start working on the first in-progress task (`Create clean-an
 
 If you prefer a different history-preserving export method, I can run `git subtree split` or `git filter-repo` instead.
 
+## 12) History scrub actions
+- Created backup branch `backup-before-filter` pointing to original history prior to scrubbing.
+- Ran `git filter-repo --invert-paths --path logs --path config/cache --force` to remove `logs/` and `config/cache/` from all commits.
+- Performed `git reflog expire --expire=now --all` and `git gc --prune=now --aggressive` to clean unreferenced objects.
+- Created `sell_manager-scrubbed` branch pointing at the rewritten, scrubbed HEAD.
+
+Notes:
+- The backup branch `backup-before-filter` contains the original history (do not push it to public remotes unless you intend to preserve private data).
+- If you want additional paths removed from history, list them and I will re-run the scrub on a fresh backup branch.
+
 
