@@ -68,7 +68,7 @@ Field notes:
 - `ticker` should be `EXCHANGE:TICKER`, e.g. `NASDAQ:AAPL`.
 - `type` is `SMA` or `EMA` (case-insensitive).
 - `length` must be one of: `5, 10, 20, 50, 100, 150, 200`.
-- `timeframe` for this release should be `1H` (hourly evaluation).
+- `timeframe` for this release should be `1H` (hourly evaluation) or `1D` (daily evaluation)
 
 4) Run the app in dry-run (safe) mode
 
