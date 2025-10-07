@@ -52,9 +52,11 @@ def append_signal(entry: Dict[str, Any]) -> bool:
             f.write(json.dumps(data, ensure_ascii=False) + "\n")
         # Print a concise terminal message for visibility when signals are generated
         try:
-            ticker = data.get("ticker") or data.get("symbol") or "<unknown>"
+            # Only print SellSignal decisions to reduce terminal noise
             decision = data.get("decision") or "<undecided>"
-            print(f"signal: {ticker} -> {decision}")
+            if decision == "SellSignal":
+                ticker = data.get("ticker") or data.get("symbol") or "<unknown>"
+                print(f"signal: {ticker} -> {decision}")
         except Exception:
             # avoid breaking logging on print errors
             pass

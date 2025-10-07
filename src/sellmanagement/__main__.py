@@ -402,7 +402,19 @@ def _cmd_start(args: argparse.Namespace) -> None:
                 # formatted table: aligned columns
                 # show rows with abv_be True first
                 try:
-                    rows = sorted(rows, key=lambda r: (not bool(r.get('abv_be'))))
+                    # sort by abv_be (True first) then by distance_pct ascending within each group
+                    def _sort_key(r):
+                        # not bool(abv_be) -> False for True, True for False so True rows come first
+                        abv_key = not bool(r.get('abv_be'))
+                        # distance may be None; treat None as +inf so it sorts after numeric values
+                        dist = r.get('distance_pct')
+                        try:
+                            dist_key = float(dist) if dist is not None else float('inf')
+                        except Exception:
+                            dist_key = float('inf')
+                        return (abv_key, dist_key)
+
+                    rows = sorted(rows, key=_sort_key)
                 except Exception:
                     pass
                 hdr = f"{'ticker':20}{'last_close':>12}{'ma_value':>12}{'distance_pct':>14}  {'assigned_ma':>18}{'abv_be':>8}"
