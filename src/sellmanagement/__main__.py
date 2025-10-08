@@ -26,6 +26,57 @@ def _cmd_start(args: argparse.Namespace) -> None:
         from .signals import _log_path as _signals_log_path
         print(f"Assigned MA CSV: {ASSIGNED_CSV.resolve()}")
         print(f"Signals log: {_signals_log_path().resolve()}")
+
+        # show last batch of signals (most-recent group by second) for quick startup visibility
+        try:
+            import json
+            from pathlib import Path
+            # reuse datetime already imported above; alias locally to avoid shadowing
+            from datetime import datetime as _dt
+
+            def _read_last_signal_batch(log_path: Path):
+                if not log_path.exists():
+                    return []
+                groups = {}
+                last_key = None
+                with log_path.open("r", encoding="utf-8") as fh:
+                    for line in fh:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            obj = json.loads(line)
+                        except Exception:
+                            continue
+                        ts = obj.get("ts")
+                        if not ts:
+                            continue
+                        try:
+                            dt = _dt.fromisoformat(ts)
+                            key = dt.replace(microsecond=0).isoformat()
+                        except Exception:
+                            key = ts.split(".")[0] if "." in ts else ts
+                        groups.setdefault(key, []).append(obj)
+                        last_key = key
+                if not last_key:
+                    return []
+                return groups.get(last_key, [])
+
+            try:
+                lp = Path(_signals_log_path().resolve())
+                last_batch = _read_last_signal_batch(lp)
+                if last_batch:
+                    print("\nLast signals (most recent batch):")
+                    for s in last_batch:
+                        try:
+                            print(f"{s.get('ticker', '<unknown>'):20} -> {s.get('decision', '<undecided>')}")
+                        except Exception:
+                            continue
+            except Exception:
+                # best-effort display; do not interrupt startup on failure
+                pass
+        except Exception:
+            pass
     except Exception:
         pass
 
