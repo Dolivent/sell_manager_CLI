@@ -53,6 +53,9 @@ def _make_entry_from_row(row: Dict[str, Any], decision: str) -> Dict[str, Any]:
         "assigned_ma": row.get("assigned_ma"),
         "assigned_length": row.get("assigned_length"),
         "assigned_type": row.get("assigned_type"),
+        # propagate sizing info so callers can act (e.g., prepare full-close orders)
+        "position": row.get("position"),
+        "avg_cost": row.get("avg_cost"),
     }
 
 
