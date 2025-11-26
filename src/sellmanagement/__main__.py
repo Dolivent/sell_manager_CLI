@@ -434,11 +434,21 @@ def _cmd_start(args: argparse.Namespace) -> None:
                                     for e in gen:
                                         try:
                                             if e.get('decision') == 'SellSignal':
-                                                # prepare a simple close order (Sell 1 unit by default)
-                                                po = prepare_close_order(e.get('ticker'), 1, order_type='MKT')
-                                                # execute_order performs prepare->checks->place
-                                                res = execute_order(ib, po, dry_run=False)
-                                                append_trace({'event': 'order_attempt', 'ticker': e.get('ticker'), 'result': str(res)})
+                                                    # use the live position size included in the signal (if available)
+                                                    pos = e.get('position')
+                                                    try:
+                                                        qty = int(abs(round(float(pos)))) if pos is not None else None
+                                                    except Exception:
+                                                        qty = None
+                                                    if not qty or qty <= 0:
+                                                        # nothing to close - skip transmitting
+                                                        append_trace({'event': 'order_skipped', 'ticker': e.get('ticker'), 'reason': 'no_position', 'position': pos})
+                                                        continue
+                                                    # prepare close for full-size quantity
+                                                    po = prepare_close_order(e.get('ticker'), qty, order_type='MKT')
+                                                    # execute_order performs prepare->checks->place
+                                                    res = execute_order(ib, po, dry_run=False)
+                                                    append_trace({'event': 'order_attempt', 'ticker': e.get('ticker'), 'position': pos, 'qty': qty, 'result': str(res)})
                                         except Exception as ex:
                                             append_trace({'event': 'order_attempt_failed', 'ticker': e.get('ticker'), 'error': str(ex)})
                                 else:
