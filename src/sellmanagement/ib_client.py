@@ -31,6 +31,15 @@ class IBClient:
         Gateway/TWS at `host:port`. On failure it raises a RuntimeError with a
         helpful message.
         """
+        # Ensure an asyncio event loop exists on the main thread before importing
+        # `ib_insync` / `eventkit` which may request the current loop at import time.
+        import asyncio
+        try:
+            # This will raise RuntimeError on Python >=3.10 if no loop is set.
+            asyncio.get_event_loop()
+        except RuntimeError:
+            asyncio.set_event_loop(asyncio.new_event_loop())
+
         try:
             from ib_insync import IB
         except Exception as e:  # pragma: no cover - environment dependent
