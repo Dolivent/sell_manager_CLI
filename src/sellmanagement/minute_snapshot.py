@@ -55,8 +55,9 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
     except Exception:
         live_positions_raw = []
 
-    # Build a mapping ticker -> avgCost from live positions
+    # Build mappings from live positions: avgCost and position size (best-effort)
     pos_avg_map = {}
+    pos_size_map = {}
     for p in (live_positions_raw or []):
         try:
             contract = getattr(p, 'contract', None) if not isinstance(p, dict) else p.get('contract')
@@ -68,10 +69,22 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
                 continue
             token = f"{exchange or 'SMART'}:{symbol}"
             avg_cost = getattr(p, 'avgCost', None) if not isinstance(p, dict) else p.get('avgCost')
+            # position size may be named 'position' or 'pos' depending on source
+            pos_size = None
+            try:
+                pos_size = getattr(p, 'position', None) if not isinstance(p, dict) else p.get('position')
+                if pos_size is None:
+                    pos_size = getattr(p, 'pos', None) if not isinstance(p, dict) else p.get('pos')
+            except Exception:
+                pos_size = None
             try:
                 pos_avg_map[token] = float(avg_cost) if avg_cost is not None else None
             except Exception:
                 pos_avg_map[token] = None
+            try:
+                pos_size_map[token] = float(pos_size) if pos_size is not None else 0.0
+            except Exception:
+                pos_size_map[token] = 0.0
         except Exception:
             continue
 
@@ -201,6 +214,8 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
     for tk in tickers:
         ass = assignments.get(tk, None)
         timeframe = (ass.get('timeframe') if ass else '1H') or '1H'
+        # normalize timeframe early to avoid leaking previous loop's value
+        tf = (timeframe or '1H').strip().upper()
 
         # if assignment is hourly, do NOT compute MA from daily data; require hourly cache
         if timeframe.strip().upper() in ("1H", "H", "HOURLY"):
@@ -324,7 +339,7 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
                 # For daily timeframe: if snapshot is before market open (09:30 NY)
                 # and IB returned a same-day daily row, prefer previous day's row.
                 try:
-                    if tf.strip().upper() not in ("1H", "H", "HOURLY"):
+                    if tf not in ("1H", "H", "HOURLY"):
                         try:
                             # chosen.get('Date') is like 'YYYY-MM-DD'
                             from datetime import date as _date
@@ -389,7 +404,7 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
 
         tf_display = None
         if ass:
-            tf = (ass.get('timeframe') or '1H').strip().upper()
+            # use the already-normalized `tf` value
             tf_display = 'H' if tf in ("1H", "H", "HOURLY") else 'D'
 
         row = {
@@ -403,6 +418,9 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
             "last_close": None if last_close is None else float(last_close),
             "last_bar_date": last_bar_date,
             "distance_pct": None if distance_pct is None else float(distance_pct),
+            # include live position sizing and avg cost so downstream logic can flatten positions
+            "position": pos_size_map.get(tk, 0.0),
+            "avg_cost": pos_avg_map.get(tk),
         }
 
         # compute 'abv_be' per requested change: true if
