@@ -70,18 +70,19 @@ def place_and_finalize(ib_client, prepared_order: Dict[str, Any], timeout: int =
     deadline = time.time() + timeout
     final_status = 'timeout'
     try:
-        while time.time() < deadline:
-            if trade is None:
-                # no trade object returned; break and treat as placed
-                break
-            stat = ib_client.get_trade_status(trade)
-            if stat == 'filled' or stat == 'done':
-                final_status = 'filled'
-                break
-            if stat == 'cancelled':
-                final_status = 'cancelled'
-                break
-            time.sleep(0.5)
+        # If the IB client didn't return a trade object, consider the order placed.
+        if trade is None:
+            final_status = 'placed'
+        else:
+            while time.time() < deadline:
+                stat = ib_client.get_trade_status(trade)
+                if stat == 'filled' or stat == 'done':
+                    final_status = 'filled'
+                    break
+                if stat == 'cancelled':
+                    final_status = 'cancelled'
+                    break
+                time.sleep(0.5)
     except Exception:
         final_status = 'error'
 
