@@ -16,4 +16,10 @@ dependencies = [
 [tool.poetry.scripts]
 sellmanagement = "sellmanagement.__main__:main"
 
-
+[project.optional-dependencies]
+gui = [
+    "qtpy>=2.3",
+    "PySide6>=6.5",
+    "qasync>=0.25",
+    "pyinstaller>=5.1",
+]

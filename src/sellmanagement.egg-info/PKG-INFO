@@ -7,4 +7,9 @@ License-File: LICENSE
 Requires-Dist: ib_insync>=0.9.86
 Requires-Dist: pandas>=1.5
 Requires-Dist: numpy>=1.24
+Provides-Extra: gui
+Requires-Dist: qtpy>=2.3; extra == "gui"
+Requires-Dist: PySide6>=6.5; extra == "gui"
+Requires-Dist: qasync>=0.25; extra == "gui"
+Requires-Dist: pyinstaller>=5.1; extra == "gui"
 Dynamic: license-file
