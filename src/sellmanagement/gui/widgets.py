@@ -675,7 +675,7 @@ class SettingsWidget(QtWidgets.QWidget):
         self.client_id.setValue(1)
         self.live_checkbox = QtWidgets.QCheckBox("Live (send orders)")
         self.allow_auto_send = QtWidgets.QCheckBox("Allow auto-send (no confirmation)")
-        self.allow_auto_send.setChecked(False)
+        self.allow_auto_send.setChecked(True)
         self.status_indicator = QtWidgets.QLabel("●")
         self.status_indicator.setStyleSheet("color: gray; font-size: 18px;")
 
