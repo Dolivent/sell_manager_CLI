@@ -4,12 +4,14 @@ from .main_window import MainWindow
 import sys
 
 def main():
-    app = QtWidgets.QApplication(sys.argv)
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
     mw = MainWindow()
     mw.show()
-    sys.exit(app.exec_())
+    # Ensure the app exec runs and returns when window closed
+    return app.exec_()
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
+
 
 

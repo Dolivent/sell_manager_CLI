@@ -23,11 +23,11 @@ def test_ib_connected_indicator(monkeypatch):
 
     # simulate worker connected signal
     mw._on_ib_connected(True)
-    style = mw.settings_tab.status_indicator.styleSheet()
+    style = mw._status_label.styleSheet()
     assert "color: green" in style
 
     mw._on_ib_connected(False)
-    style2 = mw.settings_tab.status_indicator.styleSheet()
+    style2 = mw._status_label.styleSheet()
     assert "color: red" in style2
 
 

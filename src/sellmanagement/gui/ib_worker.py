@@ -218,11 +218,27 @@ class IBWorker(QObject):
                 loop = None
             while True:
                 try:
-                    fn = self._call_queue.get()
-                    if fn is None:
+                    task = self._call_queue.get()
+                    if task is None:
                         break
                     try:
-                        fn()
+                        # support tasks that are either callables or (callable, result_queue)
+                        if isinstance(task, tuple) and len(task) == 2:
+                            fn, res_q = task
+                            try:
+                                res = fn()
+                                try:
+                                    res_q.put((True, res))
+                                except Exception:
+                                    pass
+                            except Exception as e:
+                                try:
+                                    res_q.put((False, e))
+                                except Exception:
+                                    pass
+                        else:
+                            # simple callable
+                            task()
                     except Exception:
                         logger.exception("Error in IB thread function")
                 except Exception:
@@ -243,6 +259,24 @@ class IBWorker(QObject):
             self._call_queue.put(fn)
         except Exception:
             logger.exception("Failed to submit function to IB thread")
+
+    def run_on_thread(self, fn, timeout: float | None = None):
+        """Run callable `fn` on the IB thread and return its result (or raise)."""
+        if self._ib_thread is None:
+            # ensure thread exists
+            self._start_ib_thread()
+        res_q = queue.Queue(maxsize=1)
+        try:
+            self._call_queue.put((fn, res_q))
+            ok, payload = res_q.get(timeout=timeout)
+            if ok:
+                return payload
+            else:
+                raise payload
+        except queue.Empty:
+            raise TimeoutError("Timeout waiting for IB thread task result")
+        except Exception:
+            raise
 
     def shutdown(self, timeout: float = 2.0):
         """Attempt a clean shutdown: stop poll timer, disconnect IB client, stop IB thread."""

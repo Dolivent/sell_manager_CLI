@@ -197,9 +197,25 @@ def sync_assignments_to_positions(tokens: Iterable[str]) -> dict:
             })
             kept.append(t)
         else:
-            # new token: leave assignment blank for interactive flow
-            rows.append({"ticker": t, "type": "", "length": "", "timeframe": ""})
-            added.append(t)
+            # Try symbol-only fallback: if existing has an entry for the symbol without exchange, reuse it.
+            sym_only = t_up.split(":")[-1]
+            found = None
+            for ex_key, ex_val in existing.items():
+                if ex_key.split(":")[-1] == sym_only:
+                    found = ex_val
+                    break
+            if found:
+                rows.append({
+                    "ticker": t,
+                    "type": found.get("type", ""),
+                    "length": str(int(found.get("length") or 0)) if found.get("length") else "",
+                    "timeframe": found.get("timeframe", ""),
+                })
+                kept.append(t)
+            else:
+                # new token: leave assignment blank for interactive flow
+                rows.append({"ticker": t, "type": "", "length": "", "timeframe": ""})
+                added.append(t)
 
     removed = []
     for k in existing.keys():

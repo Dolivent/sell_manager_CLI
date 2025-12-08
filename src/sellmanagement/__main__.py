@@ -12,6 +12,20 @@ from typing import Optional
 
 
 def _cmd_start(args: argparse.Namespace) -> None:
+    # Check if GUI mode is requested
+    if getattr(args, 'gui', False):
+        try:
+            from .gui.run_gui import main as gui_main
+            gui_main()
+            return
+        except ImportError as e:
+            print(f"Failed to import GUI: {e}")
+            print("Make sure GUI dependencies are installed: pip install qtpy PySide6")
+            return
+        except Exception as e:
+            print(f"Failed to launch GUI: {e}")
+            return
+
     config = Config(dry_run=not getattr(args, 'live', False), client_id=getattr(args, 'client_id', 1))
 
     use_rth_flag = not getattr(args, 'no_rth', False)
@@ -551,6 +565,7 @@ def main(argv: Optional[list] = None) -> None:
     p_start.add_argument("--dry-run", action="store_true", default=True, help="Run in dry-run mode (default)")
     p_start.add_argument("--live", action="store_true", help="Enable live mode (must be explicit). Note: live mode now only requires an interactive confirmation prompt before transmitting orders.")
     p_start.add_argument("--client-id", type=int, default=1)
+    p_start.add_argument("--gui", action="store_true", help="Launch the GUI instead of running the CLI")
 
     # metrics and retry commands removed in simplified mode
 

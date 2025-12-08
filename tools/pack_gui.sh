@@ -6,3 +6,4 @@ pyinstaller --noconfirm --onefile -n sell_manager_gui src/sellmanagement/gui/run
 echo "Done. Dist contains the executable."
 
 
+

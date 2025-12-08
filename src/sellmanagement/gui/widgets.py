@@ -1,5 +1,5 @@
 from qtpy import QtWidgets, QtCore
-from qtpy.QtGui import QColor, QBrush
+from qtpy.QtGui import QColor, QBrush, QIntValidator
 from .assigned_ma import AssignedMAStore
 from .ib_worker import IBWorker
 from pathlib import Path
@@ -11,6 +11,11 @@ from datetime import datetime
 class PositionsWidget(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        # Ensure assigned store exists early so load_assigned can read CSV immediately
+        try:
+            self.assigned_store = AssignedMAStore()
+        except Exception:
+            self.assigned_store = None
         layout = QtWidgets.QVBoxLayout(self)
 
         self.table = QtWidgets.QTableWidget(0, 9, self)
@@ -24,28 +29,66 @@ class PositionsWidget(QtWidgets.QWidget):
         self.table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.table)
         # (Order placement is handled from other UI flows; no direct place button)
-        # Snapshot info area (last snapshot time + tickers that would be closed)
+        # Snapshot info area (single-line: left = time, right = status)
+        snap_h = QtWidgets.QHBoxLayout()
         self.snapshot_label = QtWidgets.QLabel("Last snapshot: <none>")
-        self.snapshot_label.setStyleSheet("padding:6px; font-weight:600;")
+        self.snapshot_label.setStyleSheet("padding:4px; font-weight:600; font-size:11px;")
         self.snapshot_warn = QtWidgets.QLabel("")  # tickers that would be closed
-        self.snapshot_warn.setStyleSheet("padding:6px;")
-        layout.addWidget(self.snapshot_label)
-        layout.addWidget(self.snapshot_warn)
+        self.snapshot_warn.setStyleSheet("padding:4px; font-size:11px;")
+        snap_h.addWidget(self.snapshot_label)
+        snap_h.addStretch()
+        snap_h.addWidget(self.snapshot_warn, 0, QtCore.Qt.AlignRight)
+        layout.addLayout(snap_h)
         # timer to refresh minute-snapshot info
         self._snapshot_timer = QtCore.QTimer(self)
         self._snapshot_timer.setInterval(30_000)
         self._snapshot_timer.timeout.connect(self.update_minute_snapshot_info)
         self._snapshot_timer.start()
+        # file watcher for minute_snapshot to update immediately on append
+        try:
+            from qtpy.QtCore import QFileSystemWatcher
+            self._fs_watcher = QFileSystemWatcher(self)
+            # determine path
+            try:
+                am = AssignedMAStore()
+                config_dir = am.path.parent
+                project_root = config_dir.parent
+                snap_path = str(project_root / "logs" / "minute_snapshot.jsonl")
+            except Exception:
+                snap_path = str(Path(__file__).resolve().parents[3] / "logs" / "minute_snapshot.jsonl")
+            if Path(snap_path).exists():
+                try:
+                    self._fs_watcher.addPath(snap_path)
+                    self._fs_watcher.fileChanged.connect(lambda p=snap_path: self.update_minute_snapshot_info())
+                except Exception:
+                    pass
+            # watch assigned_ma.csv for external edits and reload assignments
+            try:
+                ass_path = str(am.path)
+                if Path(ass_path).exists():
+                    try:
+                        self._fs_watcher.addPath(ass_path)
+                        self._fs_watcher.fileChanged.connect(lambda p=ass_path: self._on_assigned_changed())
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        except Exception:
+            self._fs_watcher = None
+        # ensure we have an AssignedMAStore and populate table now
+        try:
+            self.assigned_store = AssignedMAStore()
+        except Exception:
+            self.assigned_store = None
+        try:
+            if self.assigned_store:
+                self.load_assigned()
+        except Exception:
+            pass
 
-        # load assigned MA
-        self.assigned_store = AssignedMAStore()
-        self.load_assigned()
-
-        # IB worker for live positions (started/stopped by settings)
-        self.ib_worker = IBWorker()
-        self.ib_worker.positions_updated.connect(self.on_positions_update)
-        # cache of latest signals per ticker: {ticker: {"decision": str, "ts": str}}
-        self.latest_signals = {}
+    def _on_assigned_changed(self):
+        # reload assignments from file (debounce briefly)
+        QtCore.QTimer.singleShot(200, self.load_assigned)
 
     def on_signals_updated(self, latest_map):
         """Receive latest signals mapping from SignalsWidget and refresh status column."""
@@ -113,9 +156,11 @@ class PositionsWidget(QtWidgets.QWidget):
             latest = {}
         for r_i, row in enumerate(rows):
             ticker = row.get("ticker") or ""
-            ma_type = row.get("type") or "SMA"
-            length = row.get("length") or "20"
-            timeframe = row.get("timeframe") or "1H"
+            ma_type = row.get("type") or ""
+            # preserve blanks from CSV: do not default to 20
+            length = row.get("length") or ""
+            # preserve blanks from CSV for timeframe
+            timeframe = row.get("timeframe") or ""
             # fill cells
             self.table.setItem(r_i, 0, QtWidgets.QTableWidgetItem(ticker))
             # set non-editable items for ticker, qty, price, status, last signal
@@ -131,21 +176,36 @@ class PositionsWidget(QtWidgets.QWidget):
 
             # MA Type dropdown
             ma_type_widget = QtWidgets.QComboBox()
+            # allow empty (unassigned) MA type
+            ma_type_widget.addItem("")
             ma_type_widget.addItems(["SMA", "EMA"])
-            ma_type_widget.setCurrentText(ma_type)
+            try:
+                ma_type_widget.setCurrentText(ma_type if ma_type else "")
+            except Exception:
+                ma_type_widget.setCurrentText(ma_type or "")
             self.table.setCellWidget(r_i, 3, ma_type_widget)
 
-            length_widget = QtWidgets.QSpinBox()
-            length_widget.setRange(1, 500)
+            # use QLineEdit for length to allow blank display when unassigned
+            length_widget = QtWidgets.QLineEdit()
+            length_widget.setValidator(QIntValidator(0, 500))
+            length_widget.setMaximumWidth(80)
             try:
-                length_widget.setValue(int(length))
+                if length and str(length).strip():
+                    length_widget.setText(str(int(length)))
+                else:
+                    length_widget.setText("")
             except Exception:
-                length_widget.setValue(20)
+                length_widget.setText("")
             self.table.setCellWidget(r_i, 4, length_widget)
 
             timeframe_widget = QtWidgets.QComboBox()
+            # allow empty timeframe to represent unassigned
+            timeframe_widget.addItem("")
             timeframe_widget.addItems(["30m", "1H", "1D"])
-            timeframe_widget.setCurrentText(timeframe)
+            try:
+                timeframe_widget.setCurrentText(timeframe if timeframe else "")
+            except Exception:
+                timeframe_widget.setCurrentText(timeframe or "")
             self.table.setCellWidget(r_i, 5, timeframe_widget)
 
             strategy_widget = QtWidgets.QComboBox()
@@ -153,7 +213,7 @@ class PositionsWidget(QtWidgets.QWidget):
             self.table.setCellWidget(r_i, 6, strategy_widget)
             # connect change signals to save handler
             ma_type_widget.currentTextChanged.connect(lambda _t, row=r_i: self._on_cell_changed(row))
-            length_widget.valueChanged.connect(lambda _v, row=r_i: self._on_cell_changed(row))
+            length_widget.textChanged.connect(lambda _t, row=r_i: self._on_cell_changed(row))
             timeframe_widget.currentTextChanged.connect(lambda _t, row=r_i: self._on_cell_changed(row))
             strategy_widget.currentTextChanged.connect(lambda _t, row=r_i: self._on_cell_changed(row))
 
@@ -179,6 +239,46 @@ class PositionsWidget(QtWidgets.QWidget):
                     self.table.item(r_i, 8).setText(formatted)
                 except Exception:
                     pass
+            # populate qty/price/status from latest minute snapshot if available (fast startup view)
+            try:
+                from ..signal_generator import read_latest_minute_snapshot
+                ms_rows = read_latest_minute_snapshot()
+                for rr in ms_rows:
+                    t = (rr.get("ticker") or rr.get("symbol") or "").strip()
+                    if not t:
+                        continue
+                    if t == ticker or t.split(":")[-1] == ticker.split(":")[-1]:
+                        # set qty/position
+                        pos = rr.get("position")
+                        try:
+                            if pos is not None:
+                                self.table.item(r_i, 1).setText(str(int(pos)) if float(pos).is_integer() else str(pos))
+                        except Exception:
+                            try:
+                                self.table.item(r_i, 1).setText(str(pos))
+                            except Exception:
+                                pass
+                        # set price from last_close
+                        try:
+                            last_close = rr.get("last_close")
+                            if last_close is not None:
+                                self.table.item(r_i, 2).setText(str(last_close))
+                        except Exception:
+                            pass
+                        # set status from abv_be / ma comparison if available
+                        try:
+                            ma_val = rr.get("ma_value")
+                            last_close = rr.get("last_close")
+                            if ma_val is not None and last_close is not None:
+                                if float(last_close) < float(ma_val):
+                                    self._set_status_for_row(r_i, "SellSignal", QColor("red"))
+                                else:
+                                    self._set_status_for_row(r_i, "NoSignal", QColor("green"))
+                        except Exception:
+                            pass
+                        break
+            except Exception:
+                pass
             # set initial status from latest decision if available
             try:
                 entry = latest.get(ticker) or latest.get(ticker.split(":")[-1])
@@ -222,14 +322,14 @@ class PositionsWidget(QtWidgets.QWidget):
                 self.snapshot_warn.setText("")
                 return
             obj = json.loads(last)
-            end_ts = obj.get("end_ts") or obj.get("start_ts") or ""
+            start_ts = obj.get("start_ts") or obj.get("end_ts") or ""
             rows = obj.get("rows") or []
             # format end_ts for display: HH:MM:SS YYYY-MM-DD
             try:
-                dt = datetime.fromisoformat(end_ts)
+                dt = datetime.fromisoformat(start_ts)
                 formatted = dt.strftime("%H:%M:%S %Y-%m-%d")
             except Exception:
-                formatted = end_ts or "<unknown>"
+                formatted = start_ts or "<unknown>"
             self.snapshot_label.setText(f"Last snapshot: {formatted}")
             # compute tickers that would be closed: last_close < ma_value
             to_close = []
@@ -313,11 +413,21 @@ class PositionsWidget(QtWidgets.QWidget):
                 ma_type_w = self.table.cellWidget(r, 3)
                 length_w = self.table.cellWidget(r, 4)
                 timeframe_w = self.table.cellWidget(r, 5)
+                # read length from QLineEdit (allow blank)
+                try:
+                    if isinstance(length_w, QtWidgets.QLineEdit):
+                        length_val = length_w.text().strip()
+                    else:
+                        # fallback for spinbox
+                        length_val = str(length_w.value() if length_w else "")
+                except Exception:
+                    length_val = ""
+
                 rows.append({
                     "ticker": ticker,
-                    "type": ma_type_w.currentText() if ma_type_w else "SMA",
-                    "length": str(length_w.value() if length_w else 20),
-                    "timeframe": timeframe_w.currentText() if timeframe_w else "1H",
+                    "type": ma_type_w.currentText() if ma_type_w and ma_type_w.currentText() else "",
+                    "length": length_val,
+                    "timeframe": timeframe_w.currentText() if timeframe_w and timeframe_w.currentText() else "",
                 })
             self.assigned_store.write_rows(rows)
         except Exception:
@@ -415,6 +525,24 @@ class SignalsWidget(QtWidgets.QWidget):
             if not tickers or not times:
                 return
 
+            # augment times with full-hour rows (4..20) for each date present so UI shows empty hours
+            generated_times = set()
+            try:
+                dates = set(dt.date() for dt in times.values())
+            except Exception:
+                dates = set()
+            for d in dates:
+                try:
+                    for hr in range(4, 21):
+                        dt_hour = datetime(d.year, d.month, d.day, hr, 0, 0)
+                        dt_hour = dt_hour.replace(microsecond=0)
+                        ts_hour = dt_hour.isoformat()
+                        if ts_hour not in times:
+                            times[ts_hour] = dt_hour
+                            generated_times.add(ts_hour)
+                except Exception:
+                    continue
+
             # sort times newest-first
             times_list = sorted(times.keys(), reverse=True)
             tickers_list = list(tickers.keys())
@@ -485,14 +613,19 @@ class SignalsWidget(QtWidgets.QWidget):
                 row_map = decisions.get(ts_raw, {})
                 for c_i, ticker in enumerate(tickers_list, start=1):
                     decision = row_map.get(ticker, "")
-                    if not decision or decision == "NoSignal":
-                        display = "-"
-                        item = QtWidgets.QTableWidgetItem(display)
+                    # if this timestamp was generated (no data) and there's no decision, show 'no data'
+                    if (ts_raw in generated_times) and not decision:
+                        item = QtWidgets.QTableWidgetItem("no data")
+                        item.setForeground(QBrush(QColor("gray")))
                     else:
-                        item = QtWidgets.QTableWidgetItem(str(decision))
-                        if str(decision).strip().lower() == "sellsignal":
-                            # red font
-                            item.setForeground(QBrush(QColor("red")))
+                        if not decision or decision == "NoSignal":
+                            display = "-"
+                            item = QtWidgets.QTableWidgetItem(display)
+                        else:
+                            item = QtWidgets.QTableWidgetItem(str(decision))
+                            if str(decision).strip().lower() == "sellsignal":
+                                # red font
+                                item.setForeground(QBrush(QColor("red")))
                     item.setFlags(item.flags() & ~QtCore.Qt.ItemIsEditable)
                     item.setTextAlignment(QtCore.Qt.AlignCenter)
                     self.table.setItem(r_i, c_i, item)
@@ -543,18 +676,37 @@ class SettingsWidget(QtWidgets.QWidget):
         self.live_checkbox = QtWidgets.QCheckBox("Live (send orders)")
         self.allow_auto_send = QtWidgets.QCheckBox("Allow auto-send (no confirmation)")
         self.allow_auto_send.setChecked(False)
-        self.connect_btn = QtWidgets.QPushButton("Connect")
         self.status_indicator = QtWidgets.QLabel("●")
         self.status_indicator.setStyleSheet("color: gray; font-size: 18px;")
 
-        layout.addRow("Host", self.host)
-        layout.addRow("Port", self.port)
-        layout.addRow("Client ID", self.client_id)
-        # connect button remains in settings; the Live checkbox and status light are shown in the top-right corner
-        layout.addRow(self.connect_btn)
+        # compact host/port/client id horizontal row (aligned top, constrained widths)
+        row_h = QtWidgets.QHBoxLayout()
+        lbl_host = QtWidgets.QLabel("Host")
+        lbl_port = QtWidgets.QLabel("Port")
+        lbl_cid = QtWidgets.QLabel("Client ID")
+        self.host.setMaximumWidth(220)
+        self.port.setMaximumWidth(90)
+        self.client_id.setMaximumWidth(90)
+        row_h.setAlignment(QtCore.Qt.AlignTop)
+        row_h.addWidget(lbl_host, 0)
+        row_h.addWidget(self.host, 0)
+        row_h.addSpacing(8)
+        row_h.addWidget(lbl_port, 0)
+        row_h.addWidget(self.port, 0)
+        row_h.addSpacing(8)
+        row_h.addWidget(lbl_cid, 0)
+        row_h.addWidget(self.client_id, 0)
+        row_h.addStretch()
+        layout.addRow(row_h)
         layout.addRow(self.allow_auto_send)
+        # console log for pipeline/ib events
+        self.console = QtWidgets.QPlainTextEdit()
+        self.console.setReadOnly(True)
+        self.console.setMaximumHeight(200)
+        layout.addRow(QtWidgets.QLabel("Logs"), self.console)
+        # no auto-run control (pipeline auto-starts when IB connects)
 
-        self.connect_btn.clicked.connect(self._on_connect_clicked)
+        # connect button removed; use traffic light click to connect/disconnect
 
     def _on_connect_clicked(self):
         # emit connect request so the main application can handle connect
