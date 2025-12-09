@@ -45,6 +45,8 @@ class PositionsWidget(QtWidgets.QWidget):
         self._snapshot_timer.setInterval(30_000)
         self._snapshot_timer.timeout.connect(self.update_minute_snapshot_info)
         self._snapshot_timer.start()
+        # whether to include pre/post-market signals in positions view (default False)
+        self._show_premarket = False
         # file watcher for minute_snapshot to update immediately on append
         try:
             from qtpy.QtCore import QFileSystemWatcher
@@ -118,6 +120,18 @@ class PositionsWidget(QtWidgets.QWidget):
         except Exception:
             return
 
+    def set_show_premarket(self, val: bool):
+        """Enable or disable inclusion of pre/post-market signals for Positions view."""
+        try:
+            self._show_premarket = bool(val)
+            # refresh view immediately
+            try:
+                self.load_assigned()
+            except Exception:
+                pass
+        except Exception:
+            pass
+
     def _set_status_for_row(self, row_index: int, text: str, color: QColor):
         try:
             itm = self.table.item(row_index, 7)
@@ -168,12 +182,19 @@ class PositionsWidget(QtWidgets.QWidget):
                             except Exception:
                                 dt_ny = dt
 
-                            # filter to US market hours: 09:30..16:00 (inclusive)
+                            # filter to US market hours:
+                            # - default view: 09:30..16:00 (inclusive)
+                            # - pre/post-market view enabled: 04:00..20:00 (inclusive)
                             try:
                                 tpart = dt_ny.time()
-                                if (tpart < dt_time(9, 30)) or (tpart > dt_time(16, 0)):
-                                    # outside market hours -> ignore for positions status
-                                    continue
+                                if getattr(self, "_show_premarket", False):
+                                    if (tpart < dt_time(4, 0)) or (tpart > dt_time(20, 0)):
+                                        # outside pre/post-market window -> ignore for positions status
+                                        continue
+                                else:
+                                    if (tpart < dt_time(9, 30)) or (tpart > dt_time(16, 0)):
+                                        # outside regular market hours -> ignore for positions status
+                                        continue
                             except Exception:
                                 continue
 
@@ -605,10 +626,16 @@ class SignalsWidget(QtWidgets.QWidget):
                     except Exception:
                         dt_ny = dt
 
-                    # filter to US market hours: 09:30..16:00 (inclusive) unless pre/post-market view enabled
+                    # filter to US market hours:
+                    # - default view: 09:30..16:00 (inclusive)
+                    # - pre/post-market view enabled: 04:00..20:00 (inclusive)
                     try:
                         tpart = dt_ny.time()
-                        if not getattr(self, "_show_premarket", False):
+                        if getattr(self, "_show_premarket", False):
+                            # include pre/post-market windows only between 04:00 and 20:30
+                            if (tpart < dt_time(4, 0)) or (tpart > dt_time(20, 30, 59)):
+                                continue
+                        else:
                             # allow a small post-close window up to 16:00:59 so post-close signals
                             # (e.g. 16:00:01) can be captured into the 16:00 bucket
                             if (tpart < dt_time(9, 30)) or (tpart > dt_time(16, 0, 59)):
@@ -711,8 +738,13 @@ class SignalsWidget(QtWidgets.QWidget):
                 dates = set()
             for d in dates:
                 try:
-                    # create rows at each full hour from 10:00 up to 16:00 (we hide 09:30)
-                    hours = list(range(10, 17))  # 10,11,...,16
+                    # create rows covering the displayed window.
+                    # - default view: create 10:00..16:00 (market hours middle)
+                    # - pre/post-market view: create 05:00..21:00 so buckets represent 04:00..20:59
+                    if getattr(self, "_show_premarket", False):
+                        hours = list(range(5, 22))  # 05,06,...,21 -> buckets representing 04:00..20:59
+                    else:
+                        hours = list(range(10, 17))  # 10,11,...,16
                     for hr in hours:
                         minute = 0
                         dt_hour = datetime(d.year, d.month, d.day, hr, minute, 0, tzinfo=ZoneInfo("America/New_York"))

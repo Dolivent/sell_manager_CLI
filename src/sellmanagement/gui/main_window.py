@@ -56,6 +56,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.settings_tab.show_premarket_toggled.connect(self.signals_tab.set_show_premarket)
         except Exception:
             pass
+        # also wire pre/post-market toggle to positions tab so both views match
+        try:
+            self.settings_tab.show_premarket_toggled.connect(self.positions_tab.set_show_premarket)
+        except Exception:
+            pass
         self.ib_worker.connected.connect(self._on_ib_connected)
         # deliver positions updates to positions tab
         self.ib_worker.positions_updated.connect(self.positions_tab.on_positions_update)
