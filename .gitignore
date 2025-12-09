@@ -65,3 +65,12 @@ how to structure project.txt
 
 tools/
 tests/
+/tools/
+/run_sellmanagement.sh
+/run_sellmanagement.ps1
+/clean-and-export.sh
+/tmp_debug.py
+/tmp_debug.out
+/tmp_signals_check.py
+/tmp_signals_check.out
+/tests/
