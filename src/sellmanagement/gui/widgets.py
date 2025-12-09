@@ -5,7 +5,7 @@ from .ib_worker import IBWorker
 from pathlib import Path
 import json
 import time as time_mod
-from datetime import datetime, time as dt_time
+from datetime import datetime, time as dt_time, timedelta
 from zoneinfo import ZoneInfo
 
 
@@ -556,14 +556,27 @@ class SignalsWidget(QtWidgets.QWidget):
             times = {}  # mapping ts_hour -> datetime
             
             def truncate_to_hour(dt_ny):
-                """Truncate datetime to hour bucket: 09:30:00 for 9:30-9:59, or HH:00:00 for other hours"""
-                hour = dt_ny.hour
-                minute = dt_ny.minute
-                # If time is between 09:30 and 09:59, truncate to 09:30:00
-                if hour == 9 and minute >= 30:
-                    return dt_ny.replace(minute=30, second=0, microsecond=0)
-                # Otherwise truncate to the hour (HH:00:00)
-                return dt_ny.replace(minute=0, second=0, microsecond=0)
+                """Map a timestamp to the UI bucket *end* time.
+                Rules:
+                - For timestamps between 09:30..09:59 => bucket_end = 10:00
+                - Otherwise bucket_end = ceil to next hour (even exact hour goes to next hour),
+                  so column '11:00' represents 10:00..10:59.
+                - Allow mapping of timestamps up to 16:00:59 into the 16:00 bucket.
+                """
+                # special-case 09:30..09:59 -> 10:00
+                if dt_ny.hour == 9 and dt_ny.minute >= 30:
+                    return dt_ny.replace(hour=10, minute=0, second=0, microsecond=0)
+                # ceil to next hour (even exact hour -> next hour)
+                base_hour = dt_ny.replace(minute=0, second=0, microsecond=0)
+                bucket_end = base_hour + timedelta(hours=1)
+                # if bucket_end would be >16:00 but ts is within allowed post-close window, map to 16:00
+                try:
+                    if bucket_end.hour > 16:
+                        if dt_ny.time() <= dt_time(16, 0, 59):
+                            return dt_ny.replace(hour=16, minute=0, second=0, microsecond=0)
+                except Exception:
+                    pass
+                return bucket_end
             
             for ln in unique_lines:
                 try:
@@ -596,7 +609,9 @@ class SignalsWidget(QtWidgets.QWidget):
                     try:
                         tpart = dt_ny.time()
                         if not getattr(self, "_show_premarket", False):
-                            if (tpart < dt_time(9, 30)) or (tpart > dt_time(16, 0)):
+                            # allow a small post-close window up to 16:00:59 so post-close signals
+                            # (e.g. 16:00:01) can be captured into the 16:00 bucket
+                            if (tpart < dt_time(9, 30)) or (tpart > dt_time(16, 0, 59)):
                                 continue
                     except Exception:
                         # if time parse fails, skip the row
@@ -670,10 +685,10 @@ class SignalsWidget(QtWidgets.QWidget):
                 dates = set()
             for d in dates:
                 try:
-                    # create rows at 09:30 then each full hour up to 15:00 (do NOT include 16:00)
-                    hours = [9] + list(range(10, 16))  # 9,10,...,15
+                    # create rows at each full hour from 10:00 up to 16:00 (we hide 09:30)
+                    hours = list(range(10, 17))  # 10,11,...,16
                     for hr in hours:
-                        minute = 30 if hr == 9 else 0
+                        minute = 0
                         dt_hour = datetime(d.year, d.month, d.day, hr, minute, 0, tzinfo=ZoneInfo("America/New_York"))
                         dt_hour = dt_hour.replace(microsecond=0)
                         ts_hour = dt_hour.isoformat()
@@ -683,10 +698,8 @@ class SignalsWidget(QtWidgets.QWidget):
                 except Exception:
                     continue
 
-            # sort times newest-first, but exclude any explicit 16:00:00 rows (we treat close as part of 15:00 bucket)
+            # sort times newest-first
             times_list = sorted(times.keys(), reverse=True)
-            # remove any exact 16:00:00 entries (if they exist due to incoming signals); those belong to 15:00 bucket
-            times_list = [ts for ts in times_list if not (times.get(ts) and times[ts].hour == 16 and times[ts].minute == 0)]
             tickers_list = list(tickers.keys())
 
             # filter tickers to only those with current positions (from minute_snapshot)
@@ -770,8 +783,33 @@ class SignalsWidget(QtWidgets.QWidget):
                 try:
                     dt = datetime.fromisoformat(ts)
                     date_only = dt.strftime("%Y-%m-%d")
-                    # format without milliseconds per requirement: YYYY-MM-DD HH:MM:SS
-                    formatted_ts = f"{date_only} {dt.strftime('%H:%M:%S')}"
+                    # Display ranges should show the bucket that ends at the column time:
+                    # - 10:00 => 09:30–09:59
+                    # - HH:00 => (HH-1):00–(HH-1):59
+                    try:
+                        if dt.minute == 0:
+                            # the displayed label is the end-of-bucket time (dt),
+                            # so the range is the previous hour (or 09:30..09:59 for 10:00)
+                            if dt.hour == 10:
+                                range_start = dt.replace(hour=9, minute=30, second=0, microsecond=0)
+                                range_end = dt.replace(hour=9, minute=59, second=59, microsecond=0)
+                            else:
+                                range_start = (dt - timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+                                range_end = dt - timedelta(seconds=1)
+                        else:
+                            # fallback: show dt..dt+hour-1s
+                            range_start = dt
+                            range_end = dt + timedelta(hours=1) - timedelta(seconds=1)
+                        # special label for market close column (16:00)
+                        if dt.hour == 16 and dt.minute == 0:
+                            range_label = "15:00–15:59 (market close)"
+                        else:
+                            rs = range_start.strftime("%H:%M")
+                            re = range_end.strftime("%H:%M")
+                            range_label = f"{rs}–{re}"
+                    except Exception:
+                        range_label = ""
+                    formatted_ts = f"{date_only} {dt.strftime('%H:%M:%S')}" + (f" ({range_label})" if range_label else "")
                 except Exception:
                     formatted_ts = ts
                     date_only = None
