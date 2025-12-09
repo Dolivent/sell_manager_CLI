@@ -671,7 +671,33 @@ class SignalsWidget(QtWidgets.QWidget):
             
             for (ts_hour, ticker), decision_list in raw_signals.items():
                 merged = merge_decisions(decision_list)
-                bucket = decisions.setdefault(ts_hour, {})
+                # Determine display key: default = ts_hour - 1 hour (shift one row up)
+                # But if this bucket represents 10:00 generated from 09:30..09:59 signals,
+                # keep it at 10:00 so those opening-period signals remain visible.
+                try:
+                    dt_hour = datetime.fromisoformat(ts_hour)
+                    keep_at_hour = False
+                    if dt_hour.hour == 10 and dt_hour.minute == 0:
+                        # inspect original timestamps in decision_list for 09:30..09:59
+                        for ent in decision_list:
+                            try:
+                                orig = datetime.fromisoformat(ent.get("ts") or "")
+                                if orig.tzinfo is None:
+                                    orig = orig.replace(tzinfo=ZoneInfo("America/New_York"))
+                                orig_ny = orig.astimezone(ZoneInfo("America/New_York"))
+                                if orig_ny.hour == 9 and orig_ny.minute >= 30:
+                                    keep_at_hour = True
+                                    break
+                            except Exception:
+                                continue
+                    if keep_at_hour:
+                        display_key = ts_hour
+                    else:
+                        display_dt = dt_hour - timedelta(hours=1)
+                        display_key = display_dt.isoformat()
+                except Exception:
+                    display_key = ts_hour
+                bucket = decisions.setdefault(display_key, {})
                 bucket[ticker] = merged
 
             if not tickers or not times:
@@ -838,8 +864,27 @@ class SignalsWidget(QtWidgets.QWidget):
                 row_map = decisions.get(ts_raw, {})
                 for c_i, ticker in enumerate(tickers_list, start=1):
                     decision = row_map.get(ticker, "")
-                    # if this timestamp was generated (no data) and there's no decision, show 'no data'
-                    if (ts_raw in generated_times) and not decision:
+                    # determine dt for this row
+                    try:
+                        row_dt = times.get(ts_raw)
+                    except Exception:
+                        row_dt = None
+                    # current NY time
+                    try:
+                        now_ny = datetime.now(ZoneInfo("America/New_York"))
+                    except Exception:
+                        now_ny = None
+
+                    # If this timestamp is a generated empty bucket OR it's a future bucket (relative to now),
+                    # show 'no data' to indicate it hasn't triggered yet.
+                    is_future = False
+                    try:
+                        if row_dt is not None and now_ny is not None and row_dt > now_ny:
+                            is_future = True
+                    except Exception:
+                        is_future = False
+
+                    if ((ts_raw in generated_times) or is_future) and not decision:
                         item = QtWidgets.QTableWidgetItem("no data")
                         item.setForeground(QBrush(QColor("gray")))
                     else:
