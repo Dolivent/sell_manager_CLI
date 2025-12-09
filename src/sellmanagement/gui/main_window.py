@@ -51,6 +51,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # wire settings connect toggle to IBWorker
         self.settings_tab.connection_toggled.connect(self._on_settings_connect_toggled)
+        # wire pre/post-market toggle to signals tab
+        try:
+            self.settings_tab.show_premarket_toggled.connect(self.signals_tab.set_show_premarket)
+        except Exception:
+            pass
         self.ib_worker.connected.connect(self._on_ib_connected)
         # deliver positions updates to positions tab
         self.ib_worker.positions_updated.connect(self.positions_tab.on_positions_update)

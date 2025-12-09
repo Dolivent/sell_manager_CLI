@@ -4,8 +4,9 @@ from .assigned_ma import AssignedMAStore
 from .ib_worker import IBWorker
 from pathlib import Path
 import json
-import time
-from datetime import datetime
+import time as time_mod
+from datetime import datetime, time as dt_time
+from zoneinfo import ZoneInfo
 
 
 class PositionsWidget(QtWidgets.QWidget):
@@ -73,6 +74,8 @@ class PositionsWidget(QtWidgets.QWidget):
                         pass
             except Exception:
                 pass
+        except Exception:
+            return
         except Exception:
             self._fs_watcher = None
         # ensure we have an AssignedMAStore and populate table now
@@ -145,11 +148,40 @@ class PositionsWidget(QtWidgets.QWidget):
                             t = j.get("ticker") or j.get("symbol")
                             if not t:
                                 continue
-                            ts = j.get("ts")
-                            # keep latest by ts (string compare ISO)
+                            # prefer 'ts' but accept 'time'
+                            ts_raw = j.get("ts") or j.get("time") or ""
+                            if not ts_raw:
+                                continue
+                            # parse timestamp and normalize to NY timezone
+                            try:
+                                dt = datetime.fromisoformat(ts_raw)
+                            except Exception:
+                                # skip unparsable timestamps
+                                continue
+                            try:
+                                if dt.tzinfo is None:
+                                    dt = dt.replace(tzinfo=ZoneInfo("America/New_York"))
+                            except Exception:
+                                pass
+                            try:
+                                dt_ny = dt.astimezone(ZoneInfo("America/New_York"))
+                            except Exception:
+                                dt_ny = dt
+
+                            # filter to US market hours: 09:30..16:00 (inclusive)
+                            try:
+                                tpart = dt_ny.time()
+                                if (tpart < dt_time(9, 30)) or (tpart > dt_time(16, 0)):
+                                    # outside market hours -> ignore for positions status
+                                    continue
+                            except Exception:
+                                continue
+
+                            # keep latest by timestamp (use normalized ISO string)
                             prev = latest.get(t)
-                            if prev is None or (ts and prev.get("ts") and ts > prev.get("ts")):
-                                latest[t] = {"ts": ts, "close": j.get("close"), "decision": j.get("decision")}
+                            ts_iso = dt_ny.isoformat()
+                            if prev is None or (ts_iso and prev.get("ts") and ts_iso > prev.get("ts")):
+                                latest[t] = {"ts": ts_iso, "close": j.get("close"), "decision": j.get("decision")}
                         except Exception:
                             continue
         except Exception:
@@ -241,6 +273,9 @@ class PositionsWidget(QtWidgets.QWidget):
                     pass
             # populate qty/price/status from latest minute snapshot if available (fast startup view)
             try:
+                # populate qty/price from latest minute snapshot (fast startup view).
+                # Do NOT derive or override the status column here — status should be set from
+                # evaluated signals (hourly/daily) so the Positions status reflects the 3pm/hourly decision.
                 from ..signal_generator import read_latest_minute_snapshot
                 ms_rows = read_latest_minute_snapshot()
                 for rr in ms_rows:
@@ -263,17 +298,6 @@ class PositionsWidget(QtWidgets.QWidget):
                             last_close = rr.get("last_close")
                             if last_close is not None:
                                 self.table.item(r_i, 2).setText(str(last_close))
-                        except Exception:
-                            pass
-                        # set status from abv_be / ma comparison if available
-                        try:
-                            ma_val = rr.get("ma_value")
-                            last_close = rr.get("last_close")
-                            if ma_val is not None and last_close is not None:
-                                if float(last_close) < float(ma_val):
-                                    self._set_status_for_row(r_i, "SellSignal", QColor("red"))
-                                else:
-                                    self._set_status_for_row(r_i, "NoSignal", QColor("green"))
                         except Exception:
                             pass
                         break
@@ -309,19 +333,53 @@ class PositionsWidget(QtWidgets.QWidget):
                 self.snapshot_label.setText("Last snapshot: <none>")
                 self.snapshot_warn.setText("")
                 return
-            # read last non-empty line
-            last = None
+            # Prefer a daily (end-of-day) snapshot if present: search backwards for the most recent
+            # snapshot whose start_ts/end_ts falls exactly on 16:00 NY time. If not found, fall back
+            # to the last snapshot entry.
+            last_obj = None
             with snap_path.open("r", encoding="utf-8") as f:
-                for ln in f:
-                    ln = ln.strip()
-                    if not ln:
-                        continue
-                    last = ln
-            if not last:
+                lines = [ln.strip() for ln in f if ln.strip()]
+            if not lines:
                 self.snapshot_label.setText("Last snapshot: <none>")
                 self.snapshot_warn.setText("")
                 return
-            obj = json.loads(last)
+            obj = None
+            for ln in reversed(lines):
+                try:
+                    candidate = json.loads(ln)
+                except Exception:
+                    continue
+                ts_raw = candidate.get("start_ts") or candidate.get("end_ts") or ""
+                try:
+                    dt = datetime.fromisoformat(ts_raw)
+                except Exception:
+                    dt = None
+                try:
+                    if dt is not None and dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=ZoneInfo("America/New_York"))
+                    if dt is not None:
+                        dt_ny = dt.astimezone(ZoneInfo("America/New_York"))
+                    else:
+                        dt_ny = None
+                except Exception:
+                    dt_ny = dt
+                # pick the first candidate that is an end-of-day snapshot (16:00 NY)
+                try:
+                    if dt_ny is not None and dt_ny.hour == 16 and dt_ny.minute == 0:
+                        obj = candidate
+                        break
+                except Exception:
+                    pass
+            # fallback to the last snapshot if no EOD snapshot found
+            if obj is None:
+                try:
+                    obj = json.loads(lines[-1])
+                except Exception:
+                    obj = None
+            if not obj:
+                self.snapshot_label.setText("Last snapshot: <none>")
+                self.snapshot_warn.setText("")
+                return
             start_ts = obj.get("start_ts") or obj.get("end_ts") or ""
             rows = obj.get("rows") or []
             # format end_ts for display: HH:MM:SS YYYY-MM-DD
@@ -463,6 +521,12 @@ class SignalsWidget(QtWidgets.QWidget):
         self._tail_timer.setInterval(1500)
         self._tail_timer.timeout.connect(self._poll_signals)
         self._tail_timer.start()
+        # whether to include pre/post-market signals (default False)
+        self._show_premarket = False
+        # cache of tickers with positions from the latest minute snapshot;
+        # used so we continue showing only position tickers even when a transient
+        # snapshot read returns no rows.
+        self._last_pos_set = set()
 
     def _poll_signals(self):
         try:
@@ -475,16 +539,33 @@ class SignalsWidget(QtWidgets.QWidget):
                 return
             # take last N lines for matrix
             recent = lines[-500:]
-            # collect unique tickers and timestamps (group by second); filter duplicates and nightly hours
-            tickers = {}
-            times = {}  # mapping ts_sec -> datetime
-            decisions = {}  # mapping ts_sec -> {ticker: decision}
+            # Step 1: Remove exact duplicate lines (identical JSON)
             seen_raw = set()
+            unique_lines = []
             for ln in recent:
-                # skip exact duplicate lines
                 if ln in seen_raw:
                     continue
                 seen_raw.add(ln)
+                unique_lines.append(ln)
+            
+            # Step 2: Collect all signals, parse timestamps, normalize to NY, filter by market hours
+            # Structure: raw_signals[(ts_hour, ticker)] = [decision1, decision2, ...]
+            # Group by hour: truncate to hour (or 09:30 for the opening hour)
+            raw_signals = {}  # mapping (ts_hour, ticker) -> list of decisions
+            tickers = {}
+            times = {}  # mapping ts_hour -> datetime
+            
+            def truncate_to_hour(dt_ny):
+                """Truncate datetime to hour bucket: 09:30:00 for 9:30-9:59, or HH:00:00 for other hours"""
+                hour = dt_ny.hour
+                minute = dt_ny.minute
+                # If time is between 09:30 and 09:59, truncate to 09:30:00
+                if hour == 9 and minute >= 30:
+                    return dt_ny.replace(minute=30, second=0, microsecond=0)
+                # Otherwise truncate to the hour (HH:00:00)
+                return dt_ny.replace(minute=0, second=0, microsecond=0)
+            
+            for ln in unique_lines:
                 try:
                     j = json.loads(ln)
                     ticker = (j.get("ticker") or j.get("symbol") or "").strip()
@@ -492,40 +573,96 @@ class SignalsWidget(QtWidgets.QWidget):
                     decision = j.get("decision") or ""
                     if not ticker or not ts_raw:
                         continue
-                    # parse timestamp; group by second and filter by hour 04..20 inclusive
+                    # parse timestamp
                     try:
                         dt = datetime.fromisoformat(ts_raw)
                     except Exception:
                         # skip unparsable timestamps
                         continue
-                    hr = dt.hour
-                    if hr < 4 or hr > 20:
-                        continue
-                    dt_sec = dt.replace(microsecond=0)
-                    ts_sec = dt_sec.isoformat()
-
-                    # preserve ticker and second-key ordering
-                    tickers[ticker] = True
-                    times[ts_sec] = dt_sec
-
-                    # merge decisions: SellSignal supersedes NoSignal
-                    bucket = decisions.setdefault(ts_sec, {})
-                    prev = bucket.get(ticker)
-                    if prev == "SellSignal":
-                        # keep existing sell
+                    # ensure we interpret naive timestamps as America/New_York
+                    try:
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=ZoneInfo("America/New_York"))
+                    except Exception:
                         pass
-                    else:
-                        if str(decision).strip().lower() == "sellsignal":
-                            bucket[ticker] = "SellSignal"
-                        else:
-                            bucket.setdefault(ticker, "NoSignal")
+
+                    # normalize to NY timezone for consistent market-hour checks
+                    try:
+                        dt_ny = dt.astimezone(ZoneInfo("America/New_York"))
+                    except Exception:
+                        dt_ny = dt
+
+                    # filter to US market hours: 09:30..16:00 (inclusive) unless pre/post-market view enabled
+                    try:
+                        tpart = dt_ny.time()
+                        if not getattr(self, "_show_premarket", False):
+                            if (tpart < dt_time(9, 30)) or (tpart > dt_time(16, 0)):
+                                continue
+                    except Exception:
+                        # if time parse fails, skip the row
+                        continue
+
+                    # truncate to hour bucket (09:30:00 for 9:30-9:59, or HH:00:00 for other hours)
+                    dt_hour = truncate_to_hour(dt_ny)
+                    ts_hour = dt_hour.isoformat()
+
+                    # collect ticker and timestamp
+                    tickers[ticker] = True
+                    times[ts_hour] = dt_hour
+                    
+                    # collect all decisions for this (ticker, ts_hour) bucket
+                    key = (ts_hour, ticker)
+                    if key not in raw_signals:
+                        raw_signals[key] = []
+                    # store decision with its original normalized timestamp so we can
+                    # later choose the most recent decision for that (ts_hour, ticker)
+                    raw_signals[key].append({"decision": decision, "ts": dt_ny.isoformat()})
                 except Exception:
                     continue
+            
+            # Step 3: Merge decisions per (ticker, ts_hour) bucket using precedence rules
+            # Precedence: SellSignal > other non-NoSignal decisions > NoSignal
+            # For multiple non-NoSignal decisions, use the first one encountered (order preserved by processing)
+            decisions = {}  # mapping ts_hour -> {ticker: merged_decision}
+            
+            def merge_decisions(decision_list):
+                """Choose the most recent decision by timestamp (latest-wins).
+                We expect decision_list to contain dicts with keys 'decision' and 'ts'.
+                If parsing fails, fall back to the previous precedence-based behavior.
+                """
+                if not decision_list:
+                    return "NoSignal"
+                try:
+                    # pick the entry with the largest ISO timestamp (latest)
+                    latest = max(decision_list, key=lambda d: (d.get("ts") or ""))
+                    dec = latest.get("decision") or ""
+                    return dec if dec else "NoSignal"
+                except Exception:
+                    # fallback: preserve existing precedence behavior
+                    for d in decision_list:
+                        try:
+                            if str(d).strip().lower() == "sellsignal":
+                                return "SellSignal"
+                        except Exception:
+                            continue
+                    for d in decision_list:
+                        try:
+                            d_str = str(d).strip()
+                            if d_str and d_str.lower() != "nosignal":
+                                return d_str
+                        except Exception:
+                            continue
+                    return "NoSignal"
+            
+            for (ts_hour, ticker), decision_list in raw_signals.items():
+                merged = merge_decisions(decision_list)
+                bucket = decisions.setdefault(ts_hour, {})
+                bucket[ticker] = merged
 
             if not tickers or not times:
                 return
 
-            # augment times with full-hour rows (4..20) for each date present so UI shows empty hours
+            # augment times with market-hour rows (09:30, 10:00, 11:00, ..., 16:00) for each date present
             generated_times = set()
             try:
                 dates = set(dt.date() for dt in times.values())
@@ -533,8 +670,11 @@ class SignalsWidget(QtWidgets.QWidget):
                 dates = set()
             for d in dates:
                 try:
-                    for hr in range(4, 21):
-                        dt_hour = datetime(d.year, d.month, d.day, hr, 0, 0)
+                    # create rows at 09:30 then each full hour up to 15:00 (do NOT include 16:00)
+                    hours = [9] + list(range(10, 16))  # 9,10,...,15
+                    for hr in hours:
+                        minute = 30 if hr == 9 else 0
+                        dt_hour = datetime(d.year, d.month, d.day, hr, minute, 0, tzinfo=ZoneInfo("America/New_York"))
                         dt_hour = dt_hour.replace(microsecond=0)
                         ts_hour = dt_hour.isoformat()
                         if ts_hour not in times:
@@ -543,8 +683,10 @@ class SignalsWidget(QtWidgets.QWidget):
                 except Exception:
                     continue
 
-            # sort times newest-first
+            # sort times newest-first, but exclude any explicit 16:00:00 rows (we treat close as part of 15:00 bucket)
             times_list = sorted(times.keys(), reverse=True)
+            # remove any exact 16:00:00 entries (if they exist due to incoming signals); those belong to 15:00 bucket
+            times_list = [ts for ts in times_list if not (times.get(ts) and times[ts].hour == 16 and times[ts].minute == 0)]
             tickers_list = list(tickers.keys())
 
             # filter tickers to only those with current positions (from minute_snapshot)
@@ -563,11 +705,56 @@ class SignalsWidget(QtWidgets.QWidget):
                             pos_set.add(t.split(":")[-1])
                     except Exception:
                         continue
-                # keep only tickers present in pos_set (match full or symbol-only)
-                tickers_list = [t for t in tickers_list if (t in pos_set) or (t.split(":")[-1] in pos_set)]
+                # If we got a non-empty snapshot, remember the pos_set and filter to it.
+                if pos_set:
+                    self._last_pos_set = pos_set
+                    tickers_list = [t for t in tickers_list if (t in pos_set) or (t.split(":")[-1] in pos_set)]
+                else:
+                    # snapshot empty: attempt to derive positions from recent signals (fallback)
+                    try:
+                        sig_pos_set = set()
+                        # self.signals_path was set in __init__ to the signals.jsonl file
+                        if getattr(self, "signals_path", None) and self.signals_path.exists():
+                            with self.signals_path.open("r", encoding="utf-8") as sf:
+                                # read from end to find latest position entries quickly
+                                lines = [ln.strip() for ln in sf if ln.strip()]
+                            for ln in reversed(lines[-2000:]):  # limit scan to last 2000 lines
+                                try:
+                                    j = json.loads(ln)
+                                except Exception:
+                                    continue
+                                tk = (j.get("ticker") or j.get("symbol") or "").strip()
+                                if not tk:
+                                    continue
+                                try:
+                                    pos = float(j.get("position", 0) or 0)
+                                except Exception:
+                                    pos = 0
+                                if pos != 0:
+                                    sig_pos_set.add(tk)
+                                    sig_pos_set.add(tk.split(":")[-1])
+                            # if we derived a set from signals, use it and cache
+                            if sig_pos_set:
+                                self._last_pos_set = sig_pos_set
+                                tickers_list = [t for t in tickers_list if (t in sig_pos_set) or (t.split(":")[-1] in sig_pos_set)]
+                            else:
+                                # fallback to last known pos_set if available
+                                if getattr(self, "_last_pos_set", None):
+                                    tickers_list = [t for t in tickers_list if (t in self._last_pos_set) or (t.split(":")[-1] in self._last_pos_set)]
+                                else:
+                                    # no snapshot ever observed -> show no tickers (only Time column)
+                                    tickers_list = []
+                    except Exception:
+                        if getattr(self, "_last_pos_set", None):
+                            tickers_list = [t for t in tickers_list if (t in self._last_pos_set) or (t.split(":")[-1] in self._last_pos_set)]
+                        else:
+                            tickers_list = []
             except Exception:
-                # if snapshot read fails, fall back to using all tickers
-                pass
+                # if snapshot read fails, fall back to last known pos set or show none
+                if getattr(self, "_last_pos_set", None):
+                    tickers_list = [t for t in tickers_list if (t in self._last_pos_set) or (t.split(":")[-1] in self._last_pos_set)]
+                else:
+                    tickers_list = []
 
             # build table: columns = 1 + len(tickers)
             self.table.clear()
@@ -656,13 +843,25 @@ class SignalsWidget(QtWidgets.QWidget):
                     pass
             except Exception:
                 pass
-
         except Exception:
             return
+
+    def set_show_premarket(self, val: bool):
+        """Enable or disable inclusion of pre/post-market signals."""
+        try:
+            self._show_premarket = bool(val)
+            # refresh view immediately
+            try:
+                self._poll_signals()
+            except Exception:
+                pass
+        except Exception:
+            pass
 
 
 class SettingsWidget(QtWidgets.QWidget):
     connection_toggled = QtCore.Signal(bool)
+    show_premarket_toggled = QtCore.Signal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -676,6 +875,14 @@ class SettingsWidget(QtWidgets.QWidget):
         self.live_checkbox = QtWidgets.QCheckBox("Live (send orders)")
         self.allow_auto_send = QtWidgets.QCheckBox("Allow auto-send (no confirmation)")
         self.allow_auto_send.setChecked(True)
+        # show pre/post-market signals in the signals tab (default: False)
+        self.show_premarket_checkbox = QtWidgets.QCheckBox("Show pre/post-market")
+        self.show_premarket_checkbox.setChecked(False)
+        # emit signal when toggled
+        try:
+            self.show_premarket_checkbox.toggled.connect(lambda v: self.show_premarket_toggled.emit(bool(v)))
+        except Exception:
+            pass
         self.status_indicator = QtWidgets.QLabel("●")
         self.status_indicator.setStyleSheet("color: gray; font-size: 18px;")
 
@@ -699,6 +906,7 @@ class SettingsWidget(QtWidgets.QWidget):
         row_h.addStretch()
         layout.addRow(row_h)
         layout.addRow(self.allow_auto_send)
+        layout.addRow(self.show_premarket_checkbox)
         # console log for pipeline/ib events
         self.console = QtWidgets.QPlainTextEdit()
         self.console.setReadOnly(True)
