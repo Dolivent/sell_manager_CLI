@@ -562,8 +562,7 @@ def main(argv: Optional[list] = None) -> None:
     # start command (default behavior)
     p_start = sub.add_parser("start", help="Start the sellmanagement service")
     p_start.add_argument("--no-rth", action="store_true", help="Do not restrict historical requests to regular trading hours")
-    p_start.add_argument("--dry-run", action="store_true", default=True, help="Run in dry-run mode (default)")
-    p_start.add_argument("--live", action="store_true", help="Enable live mode (must be explicit). Note: live mode now only requires an interactive confirmation prompt before transmitting orders.")
+    p_start.add_argument("--live", action="store_true", help="Enable live mode (must be explicit). When enabled, an interactive confirmation is required before transmitting orders.")
     p_start.add_argument("--client-id", type=int, default=1)
     p_start.add_argument("--gui", action="store_true", help="Launch the GUI instead of running the CLI")
 

@@ -12,9 +12,9 @@ Why use this tool
 Important behavior (read first)
 --------------------------------
 - **Positions and open orders are refreshed every minute and printed to your terminal.**
-- **Signals are only generated at the exact top of each hour.** The app monitors continuously but evaluates sell rules only at that boundary.for end of day signals, the app uses 3:59:55. 
-- **Signal Conditions:** the signal is only generated if the price is above  breakeven AND the assigned MA is also above break even
-- **New Positions:* when new positions are added, restart the app so that the historical data is downloaded
+- **Signals are only generated at the exact top of each hour.** The app monitors continuously but evaluates sell rules only at that boundary. For end-of-day signals, the app uses 15:59:55 (America/New_York).
+- **Signal Conditions:** the signal is only generated if the price is above break-even and the assigned MA is also above break-even.
+- **New Positions:** when new positions are added, restart the app so that the historical data is downloaded.
 - **Current behavior:** when a sell condition is met the app prepares a full-close of the entire position. Partial sells are NOT supported in this version.
 
 Prerequisites
@@ -40,12 +40,16 @@ cd sell_manager_CLI
 ```bash
 python -m venv .venv
 # Windows PowerShell
-.\.venv\Scripts\Activate.ps1
+.\\.venv\\Scripts\\Activate.ps1
 # macOS / Linux
 source .venv/bin/activate
 
+# Recommended: install the package in editable mode so the `sellmanagement` module is importable
 pip install -U pip
-pip install -r requirements.txt
+pip install -e .
+
+# Optional GUI dependencies (Qt/PySide):
+pip install ".[gui]"
 ```
 
 If `requirements.txt` is not present, install the core packages manually:
@@ -58,7 +62,14 @@ pip install ib_insync pandas numpy pyarrow pytest
 3) Run the app in dry-run (safe) mode
 
 ```bash
-python -m sellmanagement --dry-run
+# After `pip install -e .` you can run the CLI:
+python -m sellmanagement
+
+# To launch the GUI (after installing GUI extras):
+python -m sellmanagement --gui
+
+# Alternatively, run the GUI directly from source (no install):
+python src/sellmanagement/gui/run_gui.py
 ```
 
 What this does:
@@ -67,6 +78,8 @@ What this does:
 - Downloads recent market data and computes configured MAs.
 - Updates the positions table every minute and evaluates signals at the top of each hour.
 - Appends signal audit records to `logs/signals.jsonl`.
+
+Note: This repository uses a `src/` layout. Running `python -m sellmanagement` without installing the package may fail unless you set `PYTHONPATH=./src` or run `pip install -e .` first.
 
 4) Edit assigned-MA CSV (example)
 
@@ -109,7 +122,7 @@ At the top of each hour, when a sell condition is met, a signal is printed and w
 Common troubleshooting
 ----------------------
 - IB connection refused: confirm IB Gateway or TWS is running and logged in. Common IB API ports are `4001` (IB Gateway SSL), `7496` (TWS non-SSL), and `7497` (TWS paper-trading). The app defaults to `127.0.0.1:4001` unless configured otherwise.
-- Missing Python packages: run `pip install -r requirements.txt` or `pip install ib_insync pandas`.
+- Missing Python packages: run `pip install -e .` and for developer/test tools `pip install -r requirements-dev.txt` (or install packages listed in `pyproject.toml`).
 - Permission errors writing logs: run the app in a folder where you have write permissions.
 
 Contributing & tests
