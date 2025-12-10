@@ -72,7 +72,59 @@ def place_and_finalize(ib_client, prepared_order: Dict[str, Any], timeout: int =
     try:
         # If the IB client didn't return a trade object, consider the order placed.
         if trade is None:
-            final_status = 'placed'
+            # attempt a short reconciliation: poll openOrders for a matching order and treat as pending
+            try:
+                symbol = prepared_order.get('symbol') or prepared_order.get('token')
+            except Exception:
+                symbol = None
+            matched_order = None
+            recon_deadline = time.time() + min(5, timeout)
+            while time.time() < recon_deadline:
+                try:
+                    open_after = ib_client.openOrders()
+                except Exception:
+                    open_after = None
+                if open_after:
+                    found = find_orders_for_symbol(open_after, symbol) if symbol else []
+                    if found:
+                        matched_order = found[0]
+                        result['placed_order'] = matched_order
+                        break
+                time.sleep(0.5)
+
+            if matched_order is None:
+                # no trade and no openOrder discovered - mark as placed but uncertain
+                final_status = 'placed'
+            else:
+                # we have an open order object; wait until it is removed or timeout
+                while time.time() < deadline:
+                    try:
+                        cur_open = ib_client.openOrders()
+                    except Exception:
+                        cur_open = None
+                    # if matched_order no longer in open list, infer it moved to done/cancelled
+                    if matched_order not in (cur_open or []):
+                        # check positions to infer if filled
+                        try:
+                            pos_after = ib_client.positions()
+                        except Exception:
+                            pos_after = None
+                        # simple heuristic: if positions changed from before (captured earlier), mark filled
+                        # rely on caller to have positions_before in result for comparison
+                        if result.get('positions_before') is not None and pos_after is not None:
+                            try:
+                                result['positions_after'] = pos_after
+                                # basic heuristic: if positions differ, consider filled
+                                if result['positions_before'] != result['positions_after']:
+                                    final_status = 'filled'
+                                else:
+                                    final_status = 'cancelled'
+                            except Exception:
+                                final_status = 'done'
+                        else:
+                            final_status = 'done'
+                        break
+                    time.sleep(0.5)
         else:
             while time.time() < deadline:
                 stat = ib_client.get_trade_status(trade)

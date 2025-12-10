@@ -58,6 +58,48 @@ def execute_order(ib_client: Any, prepared: PreparedOrder, dry_run: bool = True)
 
         logger.info('Pre-submit checks: positions=%s open_orders=%s', bool(current_positions), bool(current_open_orders))
 
+        # Authoritative qty cap: if we can find a live position for this symbol, cap the
+        # requested quantity to avoid oversell/shorts when signal snapshot is stale.
+        try:
+            cur_pos = None
+            if current_positions:
+                for p in current_positions:
+                    try:
+                        contract = getattr(p, 'contract', None) or getattr(p, 'contract', None)
+                        sym = None
+                        if contract is not None:
+                            sym = getattr(contract, 'symbol', None) or getattr(contract, 'localSymbol', None)
+                            exchange = getattr(contract, 'exchange', None) or ''
+                            token_full = f"{exchange}:{sym}" if exchange else sym
+                        else:
+                            token_full = None
+                        # compare by full token or symbol suffix
+                        target = prepared.symbol or ""
+                        if token_full and (target.endswith(f":{sym}") or target.endswith(sym) or token_full == target):
+                            cur_pos = getattr(p, 'position', None) or getattr(p, 'pos', None) or 0
+                            break
+                    except Exception:
+                        continue
+        except Exception:
+            cur_pos = None
+
+        # If we discovered a live position, apply cap/skip logic
+        try:
+            if cur_pos is not None:
+                try:
+                    cur_qty_allowed = int(abs(round(float(cur_pos))))
+                except Exception:
+                    cur_qty_allowed = int(abs(cur_pos)) if cur_pos is not None else 0
+                if cur_qty_allowed <= 0:
+                    logger.info('Transmit skipped: no live position for %s (sig_qty=%s)', prepared.symbol, prepared.quantity)
+                    return {'status': 'skipped_no_position', 'symbol': prepared.symbol, 'position': cur_pos}
+                if prepared.quantity > cur_qty_allowed:
+                    logger.info('Capping qty for %s from %s to %s based on live positions', prepared.symbol, prepared.quantity, cur_qty_allowed)
+                    prepared.quantity = cur_qty_allowed
+                    # reflect in payload if prepared_ib is dict-like
+                    if isinstance(prepared_ib, dict) and 'quantity' in prepared_ib:
+                        prepared_ib['quantity'] = prepared.quantity
+
         # transmit: delegate to order_manager for full lifecycle handling
         if prepared_ib:
             prepared_payload = prepared_ib

@@ -4,9 +4,11 @@ from .assign import set_assignment, get_assignments_list, sync_assignments_to_po
 from .downloader import batch_download_daily, persist_batch_halfhours
 from .cache import merge_bars
 from datetime import datetime, timedelta
+import hashlib
 from .minute_snapshot import run_minute_snapshot
 import os
 from .orders import prepare_close_order, execute_order
+from .intent_store import exists as intent_exists, write_intent as intent_write, update_intent as intent_update
 import argparse
 from typing import Optional
 
@@ -448,21 +450,97 @@ def _cmd_start(args: argparse.Namespace) -> None:
                                     for e in gen:
                                         try:
                                             if e.get('decision') == 'SellSignal':
-                                                    # use the live position size included in the signal (if available)
-                                                    pos = e.get('position')
-                                                    try:
-                                                        qty = int(abs(round(float(pos)))) if pos is not None else None
-                                                    except Exception:
-                                                        qty = None
-                                                    if not qty or qty <= 0:
-                                                        # nothing to close - skip transmitting
-                                                        append_trace({'event': 'order_skipped', 'ticker': e.get('ticker'), 'reason': 'no_position', 'position': pos})
+                                                # idempotency: build intent id and skip if already attempted
+                                                ticker = e.get('ticker')
+                                                decision = e.get('decision')
+                                                # bucket timestamp if present, else use current snapshot ts
+                                                bucket_ts = e.get('ts') or ts or ""
+                                                try:
+                                                    intent_key = f"{ticker}:{bucket_ts}:{decision}"
+                                                    intent_id = hashlib.sha256(intent_key.encode('utf-8')).hexdigest()
+                                                except Exception:
+                                                    intent_id = None
+
+                                                try:
+                                                    if intent_id and intent_exists(intent_id):
+                                                        append_trace({'event': 'intent_duplicate', 'ticker': ticker, 'intent_id': intent_id})
                                                         continue
-                                                    # prepare close for full-size quantity
-                                                    po = prepare_close_order(e.get('ticker'), qty, order_type='MKT')
-                                                    # execute_order performs prepare->checks->place
-                                                    res = execute_order(ib, po, dry_run=False)
-                                                    append_trace({'event': 'order_attempt', 'ticker': e.get('ticker'), 'position': pos, 'qty': qty, 'result': str(res)})
+                                                except Exception:
+                                                    # if intent store fails, continue cautiously
+                                                    pass
+
+                                                # use the live position size included in the signal (if available)
+                                                pos = e.get('position')
+                                                try:
+                                                    qty = int(abs(round(float(pos)))) if pos is not None else None
+                                                except Exception:
+                                                    qty = None
+                                                if not qty or qty <= 0:
+                                                    # nothing to close - skip transmitting
+                                                    append_trace({'event': 'order_skipped', 'ticker': ticker, 'reason': 'no_position', 'position': pos})
+                                                    continue
+
+                                                # authoritative check: re-fetch live positions and cap qty before transmit
+                                                try:
+                                                    cur_positions = ib.positions()
+                                                except Exception:
+                                                    cur_positions = None
+                                                cur_pos_val = None
+                                                try:
+                                                    if cur_positions:
+                                                        for p in cur_positions:
+                                                            try:
+                                                                contract = getattr(p, 'contract', None) or getattr(p, 'contract', None)
+                                                                if contract is None:
+                                                                    continue
+                                                                sym = getattr(contract, 'symbol', None) or getattr(contract, 'localSymbol', None)
+                                                                exchange = getattr(contract, 'exchange', None) or ''
+                                                                token_full = f"{exchange}:{sym}" if exchange else sym
+                                                                if token_full and (ticker.endswith(f\":{sym}\") or ticker.endswith(sym) or token_full == ticker):
+                                                                    cur_pos_val = getattr(p, 'position', None) or getattr(p, 'pos', None) or 0
+                                                                    break
+                                                            except Exception:
+                                                                continue
+                                                except Exception:
+                                                    cur_pos_val = None
+
+                                                if cur_pos_val is not None:
+                                                    try:
+                                                        cap_qty = int(abs(round(float(cur_pos_val))))
+                                                    except Exception:
+                                                        try:
+                                                            cap_qty = int(abs(cur_pos_val))
+                                                        except Exception:
+                                                            cap_qty = qty
+                                                    if cap_qty <= 0:
+                                                        append_trace({'event': 'order_skipped', 'ticker': ticker, 'reason': 'no_position_at_transmit', 'sig_qty': qty, 'cur_pos': cur_pos_val})
+                                                        continue
+                                                    if qty > cap_qty:
+                                                        append_trace({'event': 'qty_capped', 'ticker': ticker, 'sig_qty': qty, 'capped_to': cap_qty})
+                                                        qty_to_send = cap_qty
+                                                    else:
+                                                        qty_to_send = qty
+                                                else:
+                                                    qty_to_send = qty
+
+                                                # persist intent before attempting send
+                                                try:
+                                                    if intent_id:
+                                                        intent_write({'intent_id': intent_id, 'ticker': ticker, 'decision': decision, 'bucket_ts': bucket_ts, 'requested_qty': qty, 'qty_to_send': qty_to_send, 'status': 'attempting', 'ts': datetime.now().isoformat()})
+                                                except Exception:
+                                                    pass
+
+                                                # prepare close for full-size quantity (capped)
+                                                po = prepare_close_order(ticker, qty_to_send, order_type='MKT')
+                                                # execute_order performs prepare->checks->place
+                                                res = execute_order(ib, po, dry_run=False)
+                                                append_trace({'event': 'order_attempt', 'ticker': ticker, 'position': pos, 'qty': qty_to_send, 'result': str(res)})
+                                                # update intent with result
+                                                try:
+                                                    if intent_id:
+                                                        intent_update(intent_id, {'status': res.get('status'), 'result': res, 'completed_ts': datetime.now().isoformat()})
+                                                except Exception:
+                                                    pass
                                         except Exception as ex:
                                             append_trace({'event': 'order_attempt_failed', 'ticker': e.get('ticker'), 'error': str(ex)})
                                 else:

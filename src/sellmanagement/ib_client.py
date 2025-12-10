@@ -274,7 +274,14 @@ class IBClient:
         try:
             # ib_insync IB.placeOrder will send the order to IB and return an OrderStatus/Trade depending
             trade = self._ib.placeOrder(contract, order)
-            return {'status': 'placed', 'trade': trade}
+            # attempt to extract useful identifiers
+            order_obj = getattr(trade, 'order', None) or order
+            order_id = None
+            try:
+                order_id = getattr(order_obj, 'orderId', None) or getattr(order_obj, 'permId', None)
+            except Exception:
+                order_id = None
+            return {'status': 'placed', 'trade': trade, 'order': order_obj, 'order_id': order_id}
         except Exception as e:
             return {'status': 'error', 'error': str(e)}
 
