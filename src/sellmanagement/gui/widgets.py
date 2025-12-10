@@ -662,66 +662,66 @@ class SignalsWidget(QtWidgets.QWidget):
                 except Exception:
                     continue
             
-            # Step 3: Merge decisions per (ticker, ts_hour) bucket using precedence rules
-            # Precedence: SellSignal > other non-NoSignal decisions > NoSignal
-            # For multiple non-NoSignal decisions, use the first one encountered (order preserved by processing)
+            # Step 3: Merge decisions per (ticker, ts_hour) bucket.
+            # Current behavior: latest-wins (most recent decision by timestamp).
+            # For multiple non-NoSignal decisions, the implementation falls back to
+            # a precedence-based approach only if timestamp comparison fails.
             decisions = {}  # mapping ts_hour -> {ticker: merged_decision}
             
             def merge_decisions(decision_list):
-                """Choose the most recent decision by timestamp (latest-wins).
-                We expect decision_list to contain dicts with keys 'decision' and 'ts'.
-                If parsing fails, fall back to the previous precedence-based behavior.
+                """Merge a list of decision entries into a single decision for the bucket.
+                Deterministic precedence: SellSignal > NoSignal > Skip.
+                Each item in decision_list may be a dict with keys 'decision' and optional 'ts',
+                or a plain string. Return canonical decision string.
                 """
                 if not decision_list:
                     return "NoSignal"
                 try:
-                    # pick the entry with the largest ISO timestamp (latest)
-                    latest = max(decision_list, key=lambda d: (d.get("ts") or ""))
-                    dec = latest.get("decision") or ""
-                    return dec if dec else "NoSignal"
+                    # normalize decision strings from entries
+                    norms = []
+                    for d in decision_list:
+                        try:
+                            if isinstance(d, dict):
+                                dec = (d.get("decision") or "").strip()
+                            else:
+                                dec = str(d).strip()
+                            norms.append(dec)
+                        except Exception:
+                            continue
+
+                    # precedence-based selection
+                    lowered = [s.lower() for s in norms if s]
+                    if any(s == "sellsignal" for s in lowered):
+                        return "SellSignal"
+                    if any(s == "nosignal" for s in lowered):
+                        return "NoSignal"
+                    if any(s == "skip" for s in lowered):
+                        return "Skip"
+
+                    # fallback: choose the most recent by ts if available
+                    try:
+                        latest = max(
+                            (d for d in decision_list if isinstance(d, dict) and (d.get("ts") or "")),
+                            key=lambda d: d.get("ts") or ""
+                        )
+                        return (latest.get("decision") or "NoSignal")
+                    except Exception:
+                        # final fallback: return first non-empty normalized value or NoSignal
+                        for s in norms:
+                            if s:
+                                return s
+                        return "NoSignal"
                 except Exception:
-                    # fallback: preserve existing precedence behavior
-                    for d in decision_list:
-                        try:
-                            if str(d).strip().lower() == "sellsignal":
-                                return "SellSignal"
-                        except Exception:
-                            continue
-                    for d in decision_list:
-                        try:
-                            d_str = str(d).strip()
-                            if d_str and d_str.lower() != "nosignal":
-                                return d_str
-                        except Exception:
-                            continue
                     return "NoSignal"
             
             for (ts_hour, ticker), decision_list in raw_signals.items():
                 merged = merge_decisions(decision_list)
-                # Determine display key: default = ts_hour - 1 hour (shift one row up)
-                # But if this bucket represents 10:00 generated from 09:30..09:59 signals,
-                # keep it at 10:00 so those opening-period signals remain visible.
+                # Determine display key: use the bucket end time (ts_hour) as the display key.
+                # This aligns displayed row labels (e.g., 16:00) with the decisions generated for that bucket.
+                # The opening-period mapping (09:30..09:59 -> 10:00) is naturally represented
+                # by the bucket end time, so no additional shift is required.
                 try:
-                    dt_hour = datetime.fromisoformat(ts_hour)
-                    keep_at_hour = False
-                    if dt_hour.hour == 10 and dt_hour.minute == 0:
-                        # inspect original timestamps in decision_list for 09:30..09:59
-                        for ent in decision_list:
-                            try:
-                                orig = datetime.fromisoformat(ent.get("ts") or "")
-                                if orig.tzinfo is None:
-                                    orig = orig.replace(tzinfo=ZoneInfo("America/New_York"))
-                                orig_ny = orig.astimezone(ZoneInfo("America/New_York"))
-                                if orig_ny.hour == 9 and orig_ny.minute >= 30:
-                                    keep_at_hour = True
-                                    break
-                            except Exception:
-                                continue
-                    if keep_at_hour:
-                        display_key = ts_hour
-                    else:
-                        display_dt = dt_hour - timedelta(hours=1)
-                        display_key = display_dt.isoformat()
+                    display_key = ts_hour
                 except Exception:
                     display_key = ts_hour
                 bucket = decisions.setdefault(display_key, {})
