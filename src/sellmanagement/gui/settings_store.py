@@ -25,3 +25,5 @@ def set_value(key: str, value) -> None:
 def get_value(key: str, default=None):
     s = _settings()
     return s.value(key, default)
+
+

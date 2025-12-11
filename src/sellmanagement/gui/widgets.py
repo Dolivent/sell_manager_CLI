@@ -580,13 +580,23 @@ class SignalsWidget(QtWidgets.QWidget):
                 """Map a timestamp to the UI bucket *end* time.
                 Rules:
                 - For timestamps between 09:30..09:59 => bucket_end = 10:00
+                - Porosity allowance: timestamps within POROSITY_SECONDS (30s) after the exact hour
+                  (minute==0 and second<=30) map to the current hour bucket (previous bucket_end).
+                  This accounts for processing delays where signals generated just after the hour
+                  should be grouped with the previous hour's bucket.
                 - Otherwise bucket_end = ceil to next hour (even exact hour goes to next hour),
                   so column '11:00' represents 10:00..10:59.
                 - Allow mapping of timestamps up to 16:00:59 into the 16:00 bucket.
                 """
+                POROSITY_SECONDS = 30
                 # special-case 09:30..09:59 -> 10:00
                 if dt_ny.hour == 9 and dt_ny.minute >= 30:
                     return dt_ny.replace(hour=10, minute=0, second=0, microsecond=0)
+                # porosity check: if timestamp is within POROSITY_SECONDS after exact hour,
+                # map to current hour bucket (previous bucket_end)
+                if dt_ny.minute == 0 and dt_ny.second <= POROSITY_SECONDS:
+                    # map to current hour bucket (e.g., 11:00:03 -> 11:00 bucket)
+                    return dt_ny.replace(minute=0, second=0, microsecond=0)
                 # ceil to next hour (even exact hour -> next hour)
                 base_hour = dt_ny.replace(minute=0, second=0, microsecond=0)
                 bucket_end = base_hour + timedelta(hours=1)

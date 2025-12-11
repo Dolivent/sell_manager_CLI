@@ -6,6 +6,7 @@ import json
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QLabel, QWidget, QHBoxLayout
 import logging
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,19 @@ class MainWindow(QtWidgets.QMainWindow):
             self.ib_worker.connected.connect(lambda ok: self._append_log(f"IB connected: {ok}"))
         except Exception:
             pass
+
+        # trace file watcher: tail trace file and append new trace lines to settings console
+        try:
+            self._trace_path = Path(__file__).resolve().parents[2] / "logs" / "ibkr_download_trace.log"
+            self._trace_last_size = 0
+            self._trace_timer = QtCore.QTimer(self)
+            self._trace_timer.setInterval(1500)
+            self._trace_timer.timeout.connect(self._poll_trace)
+            self._trace_timer.start()
+        except Exception:
+            self._trace_path = None
+            self._trace_last_size = 0
+            self._trace_timer = None
 
         tabs.addTab(self.positions_tab, "Positions")
         tabs.addTab(self.signals_tab, "Signals")
@@ -188,6 +202,11 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception:
                 pass
             try:
+                if getattr(self, "_trace_timer", None) and self._trace_timer.isActive():
+                    self._trace_timer.stop()
+            except Exception:
+                pass
+            try:
                 # perform shutdown which submits disconnect to IB thread and joins it
                 self.ib_worker.shutdown(timeout=3.0)
             except Exception:
@@ -272,5 +291,51 @@ class MainWindow(QtWidgets.QMainWindow):
                 pass
         except Exception:
             pass
+
+    def _poll_trace(self):
+        """Tail the trace file and append new lines to settings console."""
+        try:
+            if not getattr(self, "_trace_path", None):
+                return
+            p = self._trace_path
+            if not p.exists():
+                return
+            try:
+                size = p.stat().st_size
+            except Exception:
+                return
+            if size == getattr(self, "_trace_last_size", 0):
+                return
+            # read appended content
+            try:
+                with p.open("r", encoding="utf-8") as fh:
+                    fh.seek(getattr(self, "_trace_last_size", 0))
+                    new = fh.read()
+            except Exception:
+                # fallback: read whole file and show last N lines
+                try:
+                    with p.open("r", encoding="utf-8") as fh:
+                        new = "".join(fh.readlines()[-20:])
+                except Exception:
+                    new = ""
+            # update last size
+            try:
+                self._trace_last_size = size
+            except Exception:
+                self._trace_last_size = size
+            if not new:
+                return
+            for ln in new.splitlines():
+                try:
+                    j = json.loads(ln)
+                    ev = j.get("event") or j.get("message") or str(j)
+                    ts = j.get("ts") or ""
+                    self._append_log(f"TRACE {ts} {ev}")
+                except Exception:
+                    # non-json line -> append raw
+                    self._append_log(f"TRACE {ln}")
+        except Exception:
+            # swallow to avoid crashing UI
+            return
 
 
