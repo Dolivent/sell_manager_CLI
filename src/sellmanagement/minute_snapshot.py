@@ -234,12 +234,54 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
                     download_returned_ts = datetime.now(tz=ZoneInfo("America/New_York")).isoformat()
                     per_dl_ms = (dl1 - dl0) * 1000.0
                 except Exception:
+                    # if direct download fails, attempt a short backfill to get at least some data
                     download_submitted_ts = datetime.now(tz=ZoneInfo("America/New_York")).isoformat()
                     bf0 = time.perf_counter()
-                    halfhours = backfill_halfhours_sequential(ib_client, tk, target_bars=4)
+                    halfhours = backfill_halfhours_sequential(ib_client, tk, target_bars=31)
                     bf1 = time.perf_counter()
                     download_returned_ts = datetime.now(tz=ZoneInfo("America/New_York")).isoformat()
                     per_dl_ms = (bf1 - bf0) * 1000.0
+
+                # If the downloaded halfhour slice is too short to compute the assigned MA,
+                # perform a targeted backfill to obtain sufficient history before aggregation.
+                try:
+                    req_len = 0
+                    if ass:
+                        try:
+                            req_len = int(ass.get("length") or 0)
+                        except Exception:
+                            req_len = 0
+                    # For hourly-assigned tickers require at least 40 half-hour bars
+                    # (20-hour MA == 40 * 30min candles). For others use assigned length.
+                    if tf in ("1H", "H", "HOURLY"):
+                        required_halfhours = 40
+                    else:
+                        required_halfhours = req_len * 2 if req_len and req_len > 0 else 0
+                    if required_halfhours and len(halfhours) < required_halfhours:
+                        append_trace({
+                            "event": "halfhours_snapshot_insufficient",
+                            "token": tk,
+                            "have": len(halfhours),
+                            "need": required_halfhours,
+                        })
+                        # request enough halfhours to cover the MA length (target_bars expressed in halfhours)
+                        try:
+                            extra = backfill_halfhours_sequential(ib_client, tk, target_bars=required_halfhours)
+                            if extra:
+                                # combine the recently-downloaded slice with extra backfilled bars;
+                                # merge_bars later will dedupe by Date, so extending is sufficient.
+                                halfhours = (halfhours or []) + extra
+                                append_trace({
+                                    "event": "halfhours_insufficient_backfill_done",
+                                    "token": tk,
+                                    "added": len(extra),
+                                    "total": len(halfhours),
+                                })
+                        except Exception:
+                            append_trace({"event": "halfhours_insufficient_backfill_failed", "token": tk})
+                except Exception:
+                    # non-critical: continue with whatever halfhours we have
+                    pass
                 # record per-ticker download time and submitted/returned timestamps in trace
                 append_trace({
                     "event": "halfhours_download_done",
