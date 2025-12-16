@@ -8,6 +8,7 @@ easy to replace with parquet/SQLite later.
 from pathlib import Path
 import json
 from typing import Iterable, Any, List
+from datetime import datetime as _dt
 
 
 CACHE_DIR = Path(__file__).resolve().parents[2] / "config" / "cache"
@@ -104,30 +105,39 @@ def merge_bars(key: str, new_bars: Iterable[dict]) -> None:
     """Merge `new_bars` into existing cache for `key`.
 
     Matching is done by the `Date` field: new items replace existing items with
-    the same `Date`. The final file is sorted by `Date` in ascending order (if
-    Date values are comparable as strings).
+    the same datetime. The final file is sorted by datetime in ascending order.
+    This is robust to small differences in ISO formatting / timezone offsets.
     """
     # load existing
     existing = load_bars(key)
-    # build map by Date
-    by_date: dict = {}
+    # build a mapping of parsed-timestamp -> record
+    by_ts: dict[float, dict] = {}
+    # helper to obtain sortable timestamp from a Date value
+    def _ts_from_date(dval) -> float:
+        try:
+            dt = _dt.fromisoformat(str(dval))
+            return float(dt.timestamp())
+        except Exception:
+            # fallback: use 0 for unparseable (will sort earlier)
+            return 0.0
+
     for r in existing:
         d = r.get("Date")
         if d is None:
-            # use raw string fallback
             continue
-        by_date[str(d)] = r
+        ts = _ts_from_date(d)
+        by_ts[ts] = r
 
-    # incorporate new bars
+    # incorporate new bars (replace by timestamp)
     for nb in new_bars:
         d = nb.get("Date")
         if d is None:
-            # skip items without date
             continue
-        by_date[str(d)] = nb
+        ts = _ts_from_date(d)
+        by_ts[ts] = nb
 
-    # sort by date key (as string) and write back
-    merged = [by_date[k] for k in sorted(by_date.keys())]
+    # sort by timestamp and write back
+    merged = [by_ts[k] for k in sorted(by_ts.keys())]
     write_bars(key, merged)
 
 

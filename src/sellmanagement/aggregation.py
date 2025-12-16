@@ -19,17 +19,21 @@ def aggregate_halfhours_to_hours(halfhours: List[Dict[str, Any]]) -> List[Dict[s
     if not halfhours:
         return []
 
-    # Ensure oldest-first ordering for deterministic grouping
+    # Ensure oldest-first ordering for deterministic grouping (use datetimes, not string compare)
     bars = list(halfhours)
     try:
-        d0 = bars[0].get("Date")
-        d1 = bars[-1].get("Date")
-        if d0 and d1 and str(d0) > str(d1):
+        d0s = bars[0].get("Date") if bars else None
+        d1s = bars[-1].get("Date") if bars else None
+        d0 = _dt.fromisoformat(str(d0s)) if d0s else None
+        d1 = _dt.fromisoformat(str(d1s)) if d1s else None
+        if d0 and d1 and d0 > d1:
             bars = list(reversed(bars))
     except Exception:
+        # best-effort: if parsing fails, fall back to original order
         pass
 
-    groups: Dict[str, List[Dict[str, Any]]] = {}
+    # Group by hour-start as datetime objects for robust ordering across timezone formats
+    groups: Dict[_dt, List[Dict[str, Any]]] = {}
     for b in bars:
         d = b.get("Date")
         if not d:
@@ -37,23 +41,33 @@ def aggregate_halfhours_to_hours(halfhours: List[Dict[str, Any]]) -> List[Dict[s
         try:
             bdt = _dt.fromisoformat(str(d))
             hour_start = bdt.replace(minute=0, second=0, microsecond=0)
-            key = hour_start.isoformat()
+            groups.setdefault(hour_start, []).append(b)
         except Exception:
-            # Fallback: derive key by truncating the string (unsafe but better than dropping)
+            # Fallback: try a coarse string-derived key (least-preferred)
             try:
-                key = str(d)[:13] + ":00:00"
+                # create a naive hour-start string as fallback
+                key_str = str(d)[:13] + ":00:00"
+                # skip grouping by string when possible (we keep only datetime groups above)
+                # convert fallback string into a naive datetime if possible
+                try:
+                    fallback_dt = _dt.fromisoformat(key_str)
+                    groups.setdefault(fallback_dt, []).append(b)
+                except Exception:
+                    continue
             except Exception:
                 continue
-        groups.setdefault(key, []).append(b)
 
     hourly: List[Dict[str, Any]] = []
-    for key in sorted(groups.keys()):
-        items = groups[key]
-        # sort items by Date ascending within the hour
+    # iterate groups in chronological order
+    for hour_dt, items in sorted(groups.items(), key=lambda x: x[0]):
+        # sort items by parsed Date ascending within the hour
         try:
-            items = sorted(items, key=lambda x: str(x.get("Date")))
+            items = sorted(items, key=lambda x: _dt.fromisoformat(str(x.get("Date"))))
         except Exception:
-            pass
+            try:
+                items = sorted(items, key=lambda x: str(x.get("Date")))
+            except Exception:
+                pass
         try:
             open_v = items[0].get("Open")
             close_v = items[-1].get("Close")
@@ -66,7 +80,7 @@ def aggregate_halfhours_to_hours(halfhours: List[Dict[str, Any]]) -> List[Dict[s
                 except Exception:
                     pass
             hour_bar = {
-                "Date": key,
+                "Date": hour_dt.isoformat(),
                 "Open": open_v,
                 "High": high_v,
                 "Low": low_v,

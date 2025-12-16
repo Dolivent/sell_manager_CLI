@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import json
 import time
@@ -304,7 +304,81 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
                     # load full 30m cache and aggregate to hourly
                     try:
                         full_halfhours = load_bars(key30)
-                        hourly = aggregate_halfhours_to_hours(full_halfhours)
+
+                        # Freshness check: ensure latest halfhour bar is recent relative to snapshot.
+                        # Default recency threshold: 90 minutes.
+                        fresh_ok = True
+                        try:
+                            latest_bar = full_halfhours[-1] if full_halfhours else None
+                            if latest_bar is None or snap_dt is None:
+                                fresh_ok = False
+                            else:
+                                bd = latest_bar.get("Date")
+                                if not bd:
+                                    fresh_ok = False
+                                else:
+                                    try:
+                                        latest_dt = _dt.fromisoformat(str(bd))
+                                        if (snap_dt - latest_dt) > timedelta(minutes=90):
+                                            fresh_ok = False
+                                            append_trace({
+                                                "event": "halfhours_stale_detected",
+                                                "token": tk,
+                                                "latest_bar_date": bd,
+                                                "snapshot_ts": start_ts,
+                                            })
+                                    except Exception:
+                                        fresh_ok = False
+                        except Exception:
+                            fresh_ok = False
+
+                        # If stale, attempt a targeted backfill for required_halfhours and re-load cache.
+                        if not fresh_ok:
+                            try:
+                                append_trace({"event": "halfhours_stale_backfill_start", "token": tk, "need": required_halfhours, "have": len(full_halfhours)})
+                                extra = backfill_halfhours_sequential(ib_client, tk, target_bars=required_halfhours)
+                                if extra:
+                                    try:
+                                        merge_bars(key30, extra)
+                                    except Exception:
+                                        append_trace({"event": "merge_30m_from_backfill_failed", "token": tk})
+                                    # reload and re-evaluate freshness
+                                    full_halfhours = load_bars(key30)
+                                    try:
+                                        latest_bar = full_halfhours[-1] if full_halfhours else None
+                                        if latest_bar and snap_dt is not None and latest_bar.get("Date"):
+                                            latest_dt = _dt.fromisoformat(str(latest_bar.get("Date")))
+                                            if (snap_dt - latest_dt) <= timedelta(minutes=90):
+                                                fresh_ok = True
+                                                append_trace({"event": "halfhours_stale_backfill_done", "token": tk, "added": len(extra), "total": len(full_halfhours)})
+                                            else:
+                                                append_trace({"event": "halfhours_stale_backfill_failed", "token": tk, "reason": "still_stale"})
+                                                fresh_ok = False
+                                        else:
+                                            append_trace({"event": "halfhours_stale_backfill_failed", "token": tk, "reason": "no_bars_after_backfill"})
+                                            fresh_ok = False
+                                    except Exception:
+                                        append_trace({"event": "halfhours_stale_backfill_failed", "token": tk, "reason": "parse_error"})
+                                        fresh_ok = False
+                                else:
+                                    append_trace({"event": "halfhours_stale_backfill_failed", "token": tk, "reason": "no_extra_returned"})
+                                    fresh_ok = False
+                            except Exception:
+                                append_trace({"event": "halfhours_stale_backfill_failed", "token": tk, "reason": "exception"})
+                                fresh_ok = False
+                        # Regardless of freshness, attempt to aggregate whatever is present in full_halfhours.
+                        # Previously the code skipped aggregation when fresh_ok was False; that prevented
+                        # creating a 1h cache when only stale but valid 30m data existed on disk.
+                        try:
+                            if full_halfhours:
+                                hourly = aggregate_halfhours_to_hours(full_halfhours)
+                                if not fresh_ok:
+                                    append_trace({"event": "aggregated_from_stale_halfhours", "token": tk, "latest_half_dt": full_halfhours[-1].get("Date") if full_halfhours else None})
+                            else:
+                                # no halfhours available -> no hourly bars
+                                hourly = []
+                        except Exception:
+                            hourly = []
                     except Exception:
                         # fallback: aggregate from the downloaded slice if cache load fails
                         hourly = aggregate_halfhours_to_hours(halfhours)
