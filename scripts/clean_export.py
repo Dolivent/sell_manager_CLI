@@ -14,7 +14,11 @@ def main(out_dir="sell_manager_CLI_clean"):
     out_path = os.path.abspath(out_dir)
     print(f"Creating cleaned copy at {out_path}")
 
-    copytree(root, out_path, ignore=shutil.ignore_patterns('.git', 'logs', 'config/cache', '__pycache__'))
+    copytree(root, out_path, ignore=shutil.ignore_patterns(
+        '.git', 'logs', 'config/cache',
+        '**/__pycache__', '**/*.pyc', '**/*.egg-info',
+        '__pycache__', '*.pyc',
+    ))
 
     # Remove assigned_ma if present and add example
     cfg_dir = os.path.join(out_path, 'config')
@@ -26,7 +30,19 @@ def main(out_dir="sell_manager_CLI_clean"):
     # Ensure .gitignore and LICENSE included
     gi = os.path.join(out_path, '.gitignore')
     with open(gi, 'w') as f:
-        f.write('logs/\nconfig/cache/\n__pycache__/\n.venv/\n.vscode/\n.idea/\n*.pyc\n')
+        f.write(
+            'logs/\n'
+            'config/cache/\n'
+            '__pycache__/\n'
+            '**/__pycache__/\n'
+            '*.pyc\n'
+            '**/*.pyc\n'
+            '*.egg-info/\n'
+            '**/*.egg-info/\n'
+            '.venv/\n'
+            '.vscode/\n'
+            '.idea/\n'
+        )
 
     lic = os.path.join(out_path, 'LICENSE')
     if not os.path.exists(lic):

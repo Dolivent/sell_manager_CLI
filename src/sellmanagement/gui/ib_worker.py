@@ -65,7 +65,7 @@ class IBWorker(QObject):
                             self._reconnect_timer.cancel()
                         except Exception:
                             pass
-                    self._reconnect_timer = threading.Timer(backoff, lambda: self._submit_to_ib_thread(_do))
+                    self._reconnect_timer = threading.Timer(backoff, lambda: self._schedule_reconnect(host=h, port=p, client_id=cid))
                     self._reconnect_timer.daemon = True
                     self._reconnect_timer.start()
                     self._backoff_seconds = min(self._backoff_seconds * 2, self._max_backoff)
@@ -194,7 +194,7 @@ class IBWorker(QObject):
                     try:
                         if self._saved_conn_params:
                             h, p, cid = self._saved_conn_params
-                            self._submit_to_ib_thread(lambda: self.connect(host=h, port=p, client_id=cid))
+                            self._schedule_reconnect(host=h, port=p, client_id=cid)
                     except Exception:
                         logger.exception("Failed to schedule reconnect from poll errors")
                 return
@@ -259,6 +259,28 @@ class IBWorker(QObject):
             self._call_queue.put(fn)
         except Exception:
             logger.exception("Failed to submit function to IB thread")
+
+    def _schedule_reconnect(self, host=None, port=None, client_id=None):
+        """Schedule a reconnect attempt on a short-lived background thread.
+
+        Runs connect() directly on a daemon thread, bypassing the IB queue entirely.
+        This avoids re-entrant queue submissions and ensures reconnect does not block
+        or delay other queued work.
+        """
+        if host is None and self._saved_conn_params:
+            host, port, client_id = self._saved_conn_params
+        h = host or "127.0.0.1"
+        p = port or 4001
+        cid = client_id or 1
+
+        def _reconnect():
+            try:
+                self.connect(h, p, cid)
+            except Exception:
+                logger.exception("Reconnect thread failed")
+
+        t = threading.Thread(target=_reconnect, daemon=True)
+        t.start()
 
     def run_on_thread(self, fn, timeout: float | None = None):
         """Run callable `fn` on the IB thread and return its result (or raise)."""

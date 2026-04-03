@@ -128,7 +128,7 @@ def execute_order(ib_client: Any, prepared: PreparedOrder, dry_run: bool = True)
             return {'status': 'placed', 'result': res}
 
         # call the manager which handles wait/cancel/verify
-        lifecycle_res = order_manager.place_and_finalize(ib_client, prepared_payload)
+        lifecycle_res = order_manager.place_and_finalize(ib_client, prepared_payload, dry_run=dry_run)
         logger.info('Order lifecycle result: %s', lifecycle_res)
         return lifecycle_res
     except Exception as e:

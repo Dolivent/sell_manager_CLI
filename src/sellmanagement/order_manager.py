@@ -35,11 +35,23 @@ def find_orders_for_symbol(open_orders: List[Any], symbol: str) -> List[Any]:
     return out
 
 
-def place_and_finalize(ib_client, prepared_order: Dict[str, Any], timeout: int = DEFAULT_FILL_TIMEOUT) -> Dict[str, Any]:
+def place_and_finalize(ib_client, prepared_order: Dict[str, Any], timeout: int = DEFAULT_FILL_TIMEOUT, dry_run: bool = False) -> Dict[str, Any]:
     """Place an IB order and follow through until filled/cancelled/timeout.
 
-    Returns a dict with detailed results.
+    In dry-run mode, returns a simulated success result without placing any live order.
     """
+    if dry_run:
+        return {
+            'status': 'simulated',
+            'placed_trade': None,
+            'cancelled': [],
+            'positions_before': None,
+            'positions_after': None,
+            'open_orders_before': None,
+            'open_orders_after': None,
+            'dry_run': True,
+        }
+
     result: Dict[str, Any] = {
         'status': 'unknown',
         'placed_trade': None,
@@ -48,6 +60,7 @@ def place_and_finalize(ib_client, prepared_order: Dict[str, Any], timeout: int =
         'positions_after': None,
         'open_orders_before': None,
         'open_orders_after': None,
+        'dry_run': False,
     }
 
     # snapshot before

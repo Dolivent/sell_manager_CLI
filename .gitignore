@@ -9,7 +9,9 @@ logs/
 
 # Python caches and virtual environments
 __pycache__/
+**/__pycache__/
 *.py[cod]
+**/*.py[cod]
 *.pyo
 .Python
 env/
@@ -59,9 +61,7 @@ docs/_build/
 config/assigned_ma.csv
 docs/PRD_sell_manager_CLI.md
 
-# Ignore top-level docs folder
-docs/
-how to structure project.txt
+# IDE-specific project files (version these — they track session/architecture data)
 
 tools/
 tests/
