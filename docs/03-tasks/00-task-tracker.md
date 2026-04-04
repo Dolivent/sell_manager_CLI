@@ -25,7 +25,7 @@
 
 ---
 
-## Backlog Summary (T006–T019+)
+## Backlog Summary (T006–T020+)
 
 | ID | Title | Status | Priority | Detail |
 |----|-------|--------|----------|--------|
@@ -43,10 +43,11 @@
 | T017 | SMTP alerts (SellSignal + failed live orders) | DONE | P3 | [T017](tracker/T017-smtp-alerts.md) — from T015 |
 | T018 | Web dashboard (Flask) | DONE | P3 | [T018](tracker/T018-web-dashboard.md) — from T015 |
 | T019 | Client ID GUI persistence | DONE | P3 | [T019](tracker/T019-multi-account-client-id.md) — from T015 |
+| T020 | MA preset JSON import/export | DONE | P3 | [T020](tracker/T020-ma-presets-json.md) — from T015 |
 
 ## Active Tasks
 
-**T015** remains an **OPEN** parking lot for unprioritised product ideas (see tracker file). **T016**–**T019** are **DONE** (S008–S011). T006–T014 remain **DONE** (S007).
+**T015** remains an **OPEN** parking lot for unprioritised product ideas (see tracker file). **T016**–**T020** are **DONE** (S008–S012). T006–T014 remain **DONE** (S007).
 
 ---
 
@@ -226,6 +227,11 @@ Replace the `trace.py` append-only approach with Python's `logging` module (with
 **Status:** DONE | **Session:** S011 | **Detail:** [`T019-multi-account-client-id.md`](tracker/T019-multi-account-client-id.md)  
 **Resolution:** `ClientIdSelector`, `get_client_id` / `set_client_id`; **B011** fixed (SettingsWidget init order); `tests/test_settings_store.py`.
 
+### T020 — MA preset JSON
+
+**Status:** DONE | **Session:** S012 | **Detail:** [`T020-ma-presets-json.md`](tracker/T020-ma-presets-json.md)  
+**Resolution:** `export_assignments_json` / `import_assignments_json`, CLI `ma-export` / `ma-import`, GUI preset buttons; `tests/test_ma_presets.py`.
+
 ---
 
 ## Completed Tasks
@@ -250,6 +256,7 @@ Replace the `trace.py` append-only approach with Python's `logging` module (with
 | T017 | SMTP alerts | DONE | S009 |
 | T018 | Web dashboard | DONE | S010 |
 | T019 | Client ID GUI + QSettings | DONE | S011 |
+| T020 | MA presets JSON | DONE | S012 |
 
 ---
 

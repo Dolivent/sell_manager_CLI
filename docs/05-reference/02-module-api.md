@@ -1,6 +1,6 @@
 # Module API Reference
 
-> **Version:** 1.5 | **Last Updated:** 2026-04-04 (S011)  
+> **Version:** 1.6 | **Last Updated:** 2026-04-04 (S012)  
 > Covers public-facing functions and classes only. Internal helpers are omitted.
 
 ---
@@ -47,6 +47,12 @@ def sync_assignments(tokens: Iterable[str], default_type="SMA", default_length=5
 def sync_assignments_to_positions(tokens: Iterable[str]) -> dict:
     """Sync CSV to live positions. New tickers get blank assignment fields.
     Returns {added: [...], removed: [...], kept: [...]}."""
+
+def export_assignments_json(dest: str | Path) -> None:
+    """Write ``{version, assignments}`` JSON preset from current CSV."""
+
+def import_assignments_json(path: str | Path, *, merge: bool = False) -> dict:
+    """Load preset JSON; replace CSV or merge (upsert) by ticker. Returns {mode, count}."""
 ```
 
 ---
@@ -539,10 +545,14 @@ def set_client_id(value: int) -> None  # Persist client id (`ib/client_id`)
 class SettingsWidget(QtWidgets.QWidget):
     connection_toggled = QtCore.Signal(bool)
     show_premarket_toggled = QtCore.Signal(bool)
+    assignments_changed = QtCore.Signal()  # after MA preset import
     use_rth_checkbox: QtWidgets.QCheckBox  # "Use regular trading hours only (RTH)"
     live_checkbox: QtWidgets.QCheckBox
     allow_auto_send: QtWidgets.QCheckBox
     show_premarket_checkbox: QtWidgets.QCheckBox
+    btn_ma_export: QtWidgets.QPushButton
+    btn_ma_import: QtWidgets.QPushButton
+    ma_import_merge: QtWidgets.QCheckBox
     host: QtWidgets.QLineEdit
     port: QtWidgets.QSpinBox
     client_id: ClientIdSelector  # persisted via settings_store on change

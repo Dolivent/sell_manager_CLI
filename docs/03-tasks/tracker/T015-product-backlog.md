@@ -34,6 +34,7 @@ Capture non-bug product ideas. Split into new tasks when prioritized.
 | T017 | Push/email/Telegram alert on SellSignal or failed order (SMTP email) | [T017-smtp-alerts.md](T017-smtp-alerts.md) — **DONE** (S009) |
 | T018 | Web dashboard for latest snapshot + signals | [T018-web-dashboard.md](T018-web-dashboard.md) — **DONE** (S010) |
 | T019 | Multi-account / client ID (GUI persistence + ClientIdSelector) | [T019-multi-account-client-id.md](T019-multi-account-client-id.md) — **DONE** (S011) |
+| T020 | Strategy presets (MA sets) import/export | [T020-ma-presets-json.md](T020-ma-presets-json.md) — **DONE** (S012) |
 
 ## 4. Notes
 

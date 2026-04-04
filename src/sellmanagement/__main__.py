@@ -337,6 +337,20 @@ def _cmd_dashboard(args: argparse.Namespace) -> None:
     run_dashboard(host=args.host)
 
 
+def _cmd_ma_export(args: argparse.Namespace) -> None:
+    from .assign import export_assignments_json
+
+    export_assignments_json(args.path)
+    logger.info("Exported MA preset to %s", args.path)
+
+
+def _cmd_ma_import(args: argparse.Namespace) -> None:
+    from .assign import import_assignments_json
+
+    summary = import_assignments_json(args.path, merge=bool(args.merge))
+    logger.info("Imported MA preset mode=%s count=%s", summary.get("mode"), summary.get("count"))
+
+
 def _cmd_assign(args: argparse.Namespace) -> None:
     ticker: str = args.ticker
     ma_type: str = args.type
@@ -376,6 +390,17 @@ def main(argv: Optional[list] = None) -> None:
         help="Bind address (default 127.0.0.1). Port from SELLMANAGEMENT_DASHBOARD_PORT or 5055.",
     )
 
+    p_ma_exp = sub.add_parser("ma-export", help="Export assigned_ma.csv to a JSON preset file")
+    p_ma_exp.add_argument("path", help="Output .json path")
+
+    p_ma_imp = sub.add_parser("ma-import", help="Import a JSON preset into assigned_ma.csv")
+    p_ma_imp.add_argument("path", help="Input .json path")
+    p_ma_imp.add_argument(
+        "--merge",
+        action="store_true",
+        help="Upsert by ticker instead of replacing the entire CSV",
+    )
+
     # assign command: sellmanagement assign TICKER TYPE LENGTH
     p_assign = sub.add_parser("assign", help="Assign an MA to a ticker and persist to CSV")
     p_assign.add_argument("ticker", help="Ticker token in [exchange]:[ticker] format, e.g. NASDAQ:AAPL")
@@ -396,6 +421,10 @@ def main(argv: Optional[list] = None) -> None:
         print("retry-failures not available in simplified mode.")
     elif cmd == "assign":
         _cmd_assign(args)
+    elif cmd == "ma-export":
+        _cmd_ma_export(args)
+    elif cmd == "ma-import":
+        _cmd_ma_import(args)
     elif cmd == "dashboard":
         _cmd_dashboard(args)
     else:

@@ -1,6 +1,6 @@
 # Operational Runbook
 
-> **Version:** 1.4 | **Last Updated:** 2026-04-04 (S011)
+> **Version:** 1.5 | **Last Updated:** 2026-04-04 (S012)
 
 ---
 
@@ -187,6 +187,21 @@ python -m sellmanagement
 ```bash
 python -m sellmanagement assign NASDAQ:AAPL SMA 50 --timeframe 1H
 ```
+
+### MA preset JSON (backup / restore)
+
+```bash
+# Export current config/assigned_ma.csv to a JSON file
+python -m sellmanagement ma-export config/ma_preset.json
+
+# Replace CSV entirely from a preset file
+python -m sellmanagement ma-import config/ma_preset.json
+
+# Upsert tickers from the preset into the existing CSV
+python -m sellmanagement ma-import config/ma_preset.json --merge
+```
+
+In the **GUI → Settings** tab, use **Export MA preset…** / **Import MA preset…** (optional **merge** checkbox). After import, the Positions table reloads from disk.
 
 ### Via GUI
 

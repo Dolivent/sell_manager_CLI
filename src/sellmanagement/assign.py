@@ -1,6 +1,7 @@
 from pathlib import Path
 import csv
-from typing import Literal, Iterable
+import json
+from typing import Any, Dict, Iterable, List, Union
 
 CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
 ASSIGNED_CSV = CONFIG_DIR / "assigned_ma.csv"
@@ -236,4 +237,100 @@ def sync_assignments_to_positions(tokens: Iterable[str]) -> dict:
 
     return {"added": added, "removed": removed, "kept": kept}
 
+
+_PRESET_VERSION = 1
+
+
+def _coerce_timeframe(timeframe: str) -> str:
+    """Normalize timeframe string; raises ValueError if invalid."""
+    timeframe = (timeframe or "").strip()
+    if not timeframe:
+        return "1H"
+    if timeframe in ("1H", "D"):
+        return timeframe
+    tf = timeframe.upper()
+    if tf in ("H", "HOURLY"):
+        return "1H"
+    if tf in ("DAY", "DAILY", "D"):
+        return "D"
+    raise ValueError("timeframe must be '1H' or 'D'")
+
+
+def _parse_preset_row(obj: object) -> Dict[str, Any]:
+    if not isinstance(obj, dict):
+        raise ValueError("assignment must be a JSON object")
+    ticker = str(obj.get("ticker") or "").strip()
+    if not ticker:
+        raise ValueError("missing ticker")
+    typ = str(obj.get("type") or "").strip().upper()
+    if typ not in ("SMA", "EMA"):
+        raise ValueError("type must be SMA or EMA")
+    try:
+        length = int(obj.get("length"))
+    except Exception as e:
+        raise ValueError("invalid length") from e
+    if length <= 0:
+        raise ValueError("length must be positive")
+    tf = _coerce_timeframe(str(obj.get("timeframe") or "1H").strip() or "1H")
+    return {"ticker": ticker, "type": typ, "length": length, "timeframe": tf}
+
+
+def _write_csv_rows(rows: List[Dict[str, Any]]) -> None:
+    _ensure_config_dir()
+    with ASSIGNED_CSV.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["ticker", "type", "length", "timeframe"])
+        writer.writeheader()
+        for r in rows:
+            writer.writerow(
+                {
+                    "ticker": r.get("ticker", ""),
+                    "type": r.get("type", ""),
+                    "length": str(int(r.get("length", 0))),
+                    "timeframe": r.get("timeframe", "1H"),
+                }
+            )
+
+
+def export_assignments_json(dest: Union[str, Path]) -> None:
+    """Write current assignments to a JSON preset file."""
+    rows = get_assignments_list()
+    serializable = [
+        {
+            "ticker": r.get("ticker", ""),
+            "type": r.get("type", ""),
+            "length": int(r.get("length") or 0),
+            "timeframe": (r.get("timeframe") or "1H") or "1H",
+        }
+        for r in rows
+    ]
+    payload = {"version": _PRESET_VERSION, "assignments": serializable}
+    path = Path(dest)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def import_assignments_json(path: Union[str, Path], *, merge: bool = False) -> Dict[str, Any]:
+    """Load assignments from JSON. Replace entire CSV by default, or merge (upsert by ticker)."""
+    raw_text = Path(path).read_text(encoding="utf-8")
+    data = json.loads(raw_text)
+    rows_in = data.get("assignments")
+    if rows_in is None and isinstance(data, list):
+        rows_in = data
+    if not isinstance(rows_in, list):
+        raise ValueError("preset must contain an 'assignments' array (or be a bare array)")
+
+    parsed = [_parse_preset_row(x) for x in rows_in]
+
+    if merge:
+        for r in parsed:
+            set_assignment(
+                r["ticker"],
+                r["type"],
+                int(r["length"]),
+                timeframe=r["timeframe"],
+            )
+        return {"mode": "merge", "count": len(parsed)}
+
+    _write_csv_rows(parsed)
+    return {"mode": "replace", "count": len(parsed)}
 

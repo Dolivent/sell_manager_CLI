@@ -41,6 +41,27 @@ At the start of each session, add a new entry:
 
 ---
 
+## [2026-04-04] — Session #012
+
+**Goal:** Implement T020 from T015 — JSON import/export for MA assignment presets (CLI + GUI).
+
+**Started:** — | **Ended:** — | **Outcome:** SUCCESS
+
+**Context restored from:** T015 seed item “strategy presets”; S011 next steps.
+
+**Decisions made:**
+- Preset file format: `{"version": 1, "assignments": [...] }` with optional bare-array shorthand.
+- Default import **replaces** the CSV; **`--merge` / GUI checkbox** upserts via existing `set_assignment`.
+
+**Completed:** `assign.py` helpers, `ma-export` / `ma-import`, Settings tab buttons + `assignments_changed`, `tests/test_ma_presets.py`, docs.
+
+**Next steps:** T021 broker adapter package (`brokers/ibkr.py`).
+
+**Related tasks:** T020 (DONE), T015 (OPEN)  
+**Related bugs:** —
+
+---
+
 ## [2026-04-04] — Session #011
 
 **Goal:** Implement T019 from T015 — persist IB client ID in the GUI via QSettings; add `ClientIdSelector`.

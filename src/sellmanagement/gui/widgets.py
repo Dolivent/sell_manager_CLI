@@ -979,6 +979,7 @@ class ClientIdSelector(QtWidgets.QSpinBox):
 class SettingsWidget(QtWidgets.QWidget):
     connection_toggled = QtCore.Signal(bool)
     show_premarket_toggled = QtCore.Signal(bool)
+    assignments_changed = QtCore.Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1057,6 +1058,16 @@ class SettingsWidget(QtWidgets.QWidget):
         layout.addRow(self.allow_auto_send)
         layout.addRow(self.use_rth_checkbox)
         layout.addRow(self.show_premarket_checkbox)
+        self.btn_ma_export = QtWidgets.QPushButton("Export MA preset…")
+        self.btn_ma_import = QtWidgets.QPushButton("Import MA preset…")
+        self.ma_import_merge = QtWidgets.QCheckBox("On import: merge (upsert tickers) instead of replacing file")
+        preset_row = QtWidgets.QHBoxLayout()
+        preset_row.addWidget(self.btn_ma_export)
+        preset_row.addWidget(self.btn_ma_import)
+        layout.addRow(preset_row)
+        layout.addRow(self.ma_import_merge)
+        self.btn_ma_export.clicked.connect(self._on_ma_export_clicked)
+        self.btn_ma_import.clicked.connect(self._on_ma_import_clicked)
         # console log for pipeline/ib events
         self.console = QtWidgets.QPlainTextEdit()
         self.console.setReadOnly(True)
@@ -1065,6 +1076,39 @@ class SettingsWidget(QtWidgets.QWidget):
         # no auto-run control (pipeline auto-starts when IB connects)
 
         # connect button removed; use traffic light click to connect/disconnect
+
+    def _on_ma_export_clicked(self) -> None:
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Export MA preset", "", "JSON (*.json);;All (*.*)"
+        )
+        if not path:
+            return
+        try:
+            from ..assign import export_assignments_json
+
+            export_assignments_json(path)
+            QtWidgets.QMessageBox.information(self, "Export", f"Saved to:\n{path}")
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, "Export failed", str(e))
+
+    def _on_ma_import_clicked(self) -> None:
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Import MA preset", "", "JSON (*.json);;All (*.*)"
+        )
+        if not path:
+            return
+        try:
+            from ..assign import import_assignments_json
+
+            summary = import_assignments_json(path, merge=bool(self.ma_import_merge.isChecked()))
+            QtWidgets.QMessageBox.information(
+                self,
+                "Import",
+                f"Imported {summary.get('count')} row(s), mode={summary.get('mode')}.",
+            )
+            self.assignments_changed.emit()
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, "Import failed", str(e))
 
     def _on_connect_clicked(self):
         # emit connect request so the main application can handle connect
