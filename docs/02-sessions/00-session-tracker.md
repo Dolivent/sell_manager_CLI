@@ -41,6 +41,27 @@ At the start of each session, add a new entry:
 
 ---
 
+## [2026-04-04] — Session #011
+
+**Goal:** Implement T019 from T015 — persist IB client ID in the GUI via QSettings; add `ClientIdSelector`.
+
+**Started:** — | **Ended:** — | **Outcome:** SUCCESS
+
+**Context restored from:** T015 seed item 3; S010 next steps.
+
+**Decisions made:**
+- Reuse CLI `--client-id` (already default 1); GUI stores under `ib/client_id` with range **1–999999**.
+- **B011:** `SettingsWidget` referenced `use_rth_checkbox` before it was constructed — fixed by reordering init.
+
+**Completed:** `settings_store` helpers, `ClientIdSelector`, `tests/test_settings_store.py`, bug tracker, runbook + module API.
+
+**Next steps:** T020 MA preset JSON import/export; T021 broker adapters.
+
+**Related tasks:** T019 (DONE), T015 (OPEN)  
+**Related bugs:** B011 (FIXED)
+
+---
+
 ## [2026-04-04] — Session #010
 
 **Goal:** Implement T018 from T015 — Flask read-only dashboard for latest `minute_snapshot.jsonl` + latest signal batch.

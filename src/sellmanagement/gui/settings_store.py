@@ -45,6 +45,34 @@ def set_use_rth(value: bool) -> None:
     set_value(USE_RTH_KEY, bool(value))
 
 
+# ---------------------------------------------------------------------------
+# client_id — IB API session id (one active connection per id)
+# ---------------------------------------------------------------------------
+CLIENT_ID_KEY = "ib/client_id"
+
+
+def get_client_id() -> int:
+    """Return stored client id; default 1; clamp to 1..999999."""
+    raw = get_value(CLIENT_ID_KEY, 1)
+    try:
+        i = int(raw)
+        if 1 <= i <= 999_999:
+            return i
+    except Exception:
+        pass
+    return 1
+
+
+def set_client_id(value: int) -> None:
+    """Persist client id."""
+    try:
+        i = int(value)
+    except Exception:
+        i = 1
+    i = max(1, min(999_999, i))
+    set_value(CLIENT_ID_KEY, i)
+
+
 
 
 

@@ -25,7 +25,7 @@
 
 ---
 
-## Backlog Summary (T006–T018+)
+## Backlog Summary (T006–T019+)
 
 | ID | Title | Status | Priority | Detail |
 |----|-------|--------|----------|--------|
@@ -42,10 +42,11 @@
 | T016 | Trace rotation via env (`SELLMANAGEMENT_TRACE_*`) | DONE | P3 | [T016](tracker/T016-trace-rotation-env.md) — from T015 |
 | T017 | SMTP alerts (SellSignal + failed live orders) | DONE | P3 | [T017](tracker/T017-smtp-alerts.md) — from T015 |
 | T018 | Web dashboard (Flask) | DONE | P3 | [T018](tracker/T018-web-dashboard.md) — from T015 |
+| T019 | Client ID GUI persistence | DONE | P3 | [T019](tracker/T019-multi-account-client-id.md) — from T015 |
 
 ## Active Tasks
 
-**T015** remains an **OPEN** parking lot for unprioritised product ideas (see tracker file). **T016** (S008), **T017** (S009), **T018** (S010) are **DONE**. T006–T014 remain **DONE** (S007).
+**T015** remains an **OPEN** parking lot for unprioritised product ideas (see tracker file). **T016**–**T019** are **DONE** (S008–S011). T006–T014 remain **DONE** (S007).
 
 ---
 
@@ -220,6 +221,11 @@ Replace the `trace.py` append-only approach with Python's `logging` module (with
 **Status:** DONE | **Session:** S010 | **Detail:** [`T018-web-dashboard.md`](tracker/T018-web-dashboard.md)  
 **Resolution:** `dashboard.py`, `sellmanagement dashboard`, `SELLMANAGEMENT_DASHBOARD_PORT`, `[gui]` Flask extra; `tests/test_dashboard.py`.
 
+### T019 — Client ID in GUI (QSettings)
+
+**Status:** DONE | **Session:** S011 | **Detail:** [`T019-multi-account-client-id.md`](tracker/T019-multi-account-client-id.md)  
+**Resolution:** `ClientIdSelector`, `get_client_id` / `set_client_id`; **B011** fixed (SettingsWidget init order); `tests/test_settings_store.py`.
+
 ---
 
 ## Completed Tasks
@@ -243,6 +249,7 @@ Replace the `trace.py` append-only approach with Python's `logging` module (with
 | T016 | Trace rotation env vars | DONE | S008 |
 | T017 | SMTP alerts | DONE | S009 |
 | T018 | Web dashboard | DONE | S010 |
+| T019 | Client ID GUI + QSettings | DONE | S011 |
 
 ---
 

@@ -967,6 +967,15 @@ class SignalsWidget(QtWidgets.QWidget):
             pass
 
 
+class ClientIdSelector(QtWidgets.QSpinBox):
+    """IB TWS/Gateway API client ID (1–999999)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setRange(1, 999_999)
+        self.setValue(1)
+
+
 class SettingsWidget(QtWidgets.QWidget):
     connection_toggled = QtCore.Signal(bool)
     show_premarket_toggled = QtCore.Signal(bool)
@@ -978,10 +987,7 @@ class SettingsWidget(QtWidgets.QWidget):
         self.port = QtWidgets.QSpinBox()
         self.port.setRange(1, 65535)
         self.port.setValue(4001)
-        self.client_id = QtWidgets.QSpinBox()
-        self.client_id.setValue(1)
-        # expose use_rth as a property so main_window can read it without accessing the checkbox directly
-        self._use_rth = self.use_rth_checkbox.isChecked()
+        self.client_id = ClientIdSelector()
 
         self.live_checkbox = QtWidgets.QCheckBox("Live (send orders)")
         self.allow_auto_send = QtWidgets.QCheckBox("Allow auto-send (no confirmation)")
@@ -989,9 +995,11 @@ class SettingsWidget(QtWidgets.QWidget):
         # use_rth: restrict IB historical requests to Regular Trading Hours (default True)
         self.use_rth_checkbox = QtWidgets.QCheckBox("Use regular trading hours only (RTH)")
         self.use_rth_checkbox.setChecked(True)
-        # load persisted use_rth value from settings store
+        self._use_rth = True
+        # load persisted use_rth + client_id from settings store
         try:
-            from .settings_store import get_use_rth, set_use_rth
+            from .settings_store import get_client_id, get_use_rth, set_client_id, set_use_rth
+
             self._use_rth = get_use_rth()
             self.use_rth_checkbox.setChecked(self._use_rth)
             # persist on change
@@ -1001,9 +1009,21 @@ class SettingsWidget(QtWidgets.QWidget):
                     set_use_rth(bool(checked))
                 except Exception:
                     pass
+
             self.use_rth_checkbox.toggled.connect(_on_use_rth_changed)
+
+            cid = get_client_id()
+            self.client_id.setValue(cid)
+
+            def _on_client_id_changed(v: int) -> None:
+                try:
+                    set_client_id(int(v))
+                except Exception:
+                    pass
+
+            self.client_id.valueChanged.connect(_on_client_id_changed)
         except Exception:
-            self._use_rth = True
+            self._use_rth = bool(self.use_rth_checkbox.isChecked())
         # show pre/post-market signals in the signals tab (default: False)
         self.show_premarket_checkbox = QtWidgets.QCheckBox("Show pre/post-market")
         self.show_premarket_checkbox.setChecked(False)

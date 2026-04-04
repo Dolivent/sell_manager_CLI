@@ -1,6 +1,6 @@
 # Operational Runbook
 
-> **Version:** 1.3 | **Last Updated:** 2026-04-04 (S010)
+> **Version:** 1.4 | **Last Updated:** 2026-04-04 (S011)
 
 ---
 
@@ -140,7 +140,7 @@ python src/sellmanagement/gui/run_gui.py
 run.bat
 ```
 
-The GUI auto-connects on startup using the saved host/port/client ID from Settings.
+The GUI auto-connects on startup using the saved host/port/**client ID** from Settings. The **Client ID** spin box is persisted via Qt **QSettings** (`ib/client_id`, default 1) so each machine can remember a dedicated API session id.
 
 ### 2c. IB Gateway vs TWS
 

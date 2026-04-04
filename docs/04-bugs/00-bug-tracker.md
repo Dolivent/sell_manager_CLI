@@ -52,12 +52,32 @@ Add a new entry for every bug, regression, or design problem you encounter or id
 | B008 | Missing `__pycache__` / `.pyc` patterns in `.gitignore` for nested dirs | LOW | FIXED | `.gitignore` | 2026-04-04 (S001) |
 | B009 | `docs/` folder is gitignored — documentation not versioned | MEDIUM | FIXED | `.gitignore` | 2026-04-04 (S001) |
 | B010 | `__pycache__` and `.egg-info` not cleaned by `scripts/clean_export.py` | LOW | FIXED | `scripts/clean_export.py` | 2026-04-04 (S001) |
+| B011 | `SettingsWidget` used `use_rth_checkbox` before it was created | MEDIUM | FIXED | `gui/widgets.py` | 2026-04-04 (S011) |
 
 ---
 
 ## Bug Details
 
 <!-- Add bug entries below. Most recent first. -->
+
+---
+
+## [B011] — `SettingsWidget` referenced `use_rth_checkbox` before construction
+
+**Severity:** MEDIUM  
+**Status:** FIXED  
+**Component:** `gui/widgets.py`  
+**Discovered:** 2026-04-04 (session S011)  
+**Last Updated:** 2026-04-04
+
+**Summary:** `SettingsWidget.__init__` set `self._use_rth = self.use_rth_checkbox.isChecked()` before `self.use_rth_checkbox` existed, causing `AttributeError` on GUI startup.
+
+**Fix / Workaround:** Build the checkbox first, then load `use_rth` and `client_id` from `settings_store`.
+
+**Session fixed:** S011
+
+**Related tasks:** T019  
+**Related sessions:** S011
 
 ---
 

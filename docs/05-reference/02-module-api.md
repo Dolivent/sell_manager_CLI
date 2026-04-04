@@ -1,6 +1,6 @@
 # Module API Reference
 
-> **Version:** 1.4 | **Last Updated:** 2026-04-04 (S010)  
+> **Version:** 1.5 | **Last Updated:** 2026-04-04 (S011)  
 > Covers public-facing functions and classes only. Internal helpers are omitted.
 
 ---
@@ -442,6 +442,9 @@ class MainWindow(QtWidgets.QMainWindow):
 ### `widgets.py`
 
 ```python
+class ClientIdSelector(QtWidgets.QSpinBox):
+    """IB API client id spin box (range 1–999999)."""
+
 class PositionsWidget(QtWidgets.QWidget):
     def load_assigned(self)  # Load assigned_ma.csv into table
     def update_minute_snapshot_info(self)  # Read latest snapshot, update info label
@@ -524,6 +527,8 @@ def set_value(key: str, value) -> None
 def get_value(key: str, default=None)
 def get_use_rth() -> bool  # Returns stored use_rth flag, defaults True
 def set_use_rth(value: bool) -> None  # Persist use_rth flag via Qt QSettings
+def get_client_id() -> int  # Stored IB client id (1–999999), default 1
+def set_client_id(value: int) -> None  # Persist client id (`ib/client_id`)
 ```
 
 ---
@@ -540,7 +545,7 @@ class SettingsWidget(QtWidgets.QWidget):
     show_premarket_checkbox: QtWidgets.QCheckBox
     host: QtWidgets.QLineEdit
     port: QtWidgets.QSpinBox
-    client_id: QtWidgets.QSpinBox
+    client_id: ClientIdSelector  # persisted via settings_store on change
     console: QtWidgets.QPlainTextEdit
 
     @property
