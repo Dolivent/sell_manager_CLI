@@ -1,6 +1,6 @@
 # Module API Reference
 
-> **Version:** 1.3 | **Last Updated:** 2026-04-04 (S009)  
+> **Version:** 1.4 | **Last Updated:** 2026-04-04 (S010)  
 > Covers public-facing functions and classes only. Internal helpers are omitted.
 
 ---
@@ -115,6 +115,24 @@ def persist_batch_halfhours(ib_client, tickers: Iterable[str], batch_size=8, bat
 def backfill_halfhours_sequential(ib_client, token: str, target_bars=200) -> List[dict]:
     """Public wrapper: backfill until at least `target_bars` 30m bars for one ticker.
     Returns list of bar dicts (newest-last)."""
+```
+
+---
+
+### `dashboard.py`
+
+```python
+def read_latest_snapshot_record(snapshot_path: Path) -> Optional[Dict[str, Any]]:
+    """Last JSON object in an NDJSON minute-snapshot file."""
+
+def dashboard_port() -> int:
+    """From SELLMANAGEMENT_DASHBOARD_PORT or default 5055."""
+
+def create_app(*, snapshot_path: Path | None = None, signals_path: Path | None = None) -> Flask:
+    """Flask app with route ``/`` — latest snapshot rows + latest signal batch."""
+
+def run_dashboard(*, host: str = "127.0.0.1") -> None:
+    """``app.run`` on dashboard_port(); logs listen URL."""
 ```
 
 ---

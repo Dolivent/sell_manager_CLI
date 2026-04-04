@@ -1,6 +1,6 @@
 # Operational Runbook
 
-> **Version:** 1.2 | **Last Updated:** 2026-04-04 (S009)
+> **Version:** 1.3 | **Last Updated:** 2026-04-04 (S010)
 
 ---
 
@@ -113,6 +113,19 @@ If host or recipient is missing (or user/password pairing is invalid), the app l
 
 - A **SellSignal** line is successfully appended to `logs/signals.jsonl`.
 - A **live** order attempt returns status `failed_prepare`, `failed_transmit`, `timeout`, `error`, or `cancelled`, or raises in `transmit_live_sell_signals`.
+
+### 2a.3 Read-only web dashboard (Flask)
+
+Requires `pip install -e ".[gui]"` (includes Flask).
+
+```bash
+python -m sellmanagement dashboard
+# Optional bind address (default 127.0.0.1)
+python -m sellmanagement dashboard --host 127.0.0.1
+```
+
+- **URL:** `http://127.0.0.1:5055/` unless `SELLMANAGEMENT_DASHBOARD_PORT` overrides the port.
+- **Data:** last line of `logs/minute_snapshot.jsonl` (table of `rows`) and the **newest time-bucket** of `logs/signals.jsonl` (same grouping as CLI “last signals” preview).
 
 ### 2b. GUI Mode
 

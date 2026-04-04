@@ -331,6 +331,12 @@ def _cmd_start(args: argparse.Namespace) -> None:
         ib.disconnect()
 
 
+def _cmd_dashboard(args: argparse.Namespace) -> None:
+    from .dashboard import run_dashboard
+
+    run_dashboard(host=args.host)
+
+
 def _cmd_assign(args: argparse.Namespace) -> None:
     ticker: str = args.ticker
     ma_type: str = args.type
@@ -360,6 +366,16 @@ def main(argv: Optional[list] = None) -> None:
 
     # metrics and retry commands removed in simplified mode
 
+    p_dash = sub.add_parser(
+        "dashboard",
+        help="Read-only web UI for latest minute snapshot and signal batch (requires [gui] extra for Flask)",
+    )
+    p_dash.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Bind address (default 127.0.0.1). Port from SELLMANAGEMENT_DASHBOARD_PORT or 5055.",
+    )
+
     # assign command: sellmanagement assign TICKER TYPE LENGTH
     p_assign = sub.add_parser("assign", help="Assign an MA to a ticker and persist to CSV")
     p_assign.add_argument("ticker", help="Ticker token in [exchange]:[ticker] format, e.g. NASDAQ:AAPL")
@@ -380,6 +396,8 @@ def main(argv: Optional[list] = None) -> None:
         print("retry-failures not available in simplified mode.")
     elif cmd == "assign":
         _cmd_assign(args)
+    elif cmd == "dashboard":
+        _cmd_dashboard(args)
     else:
         parser.print_help()
 

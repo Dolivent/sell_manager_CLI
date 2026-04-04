@@ -23,6 +23,7 @@ gui = [
     "PySide6>=6.5",
     "qasync>=0.25",
     "pyinstaller>=5.1",
+    "flask>=3.0",
 ]
 dev = [
     "pytest>=7.4",

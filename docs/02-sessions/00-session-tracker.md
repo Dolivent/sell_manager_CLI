@@ -41,6 +41,28 @@ At the start of each session, add a new entry:
 
 ---
 
+## [2026-04-04] — Session #010
+
+**Goal:** Implement T018 from T015 — Flask read-only dashboard for latest `minute_snapshot.jsonl` + latest signal batch.
+
+**Started:** — | **Ended:** — | **Outcome:** SUCCESS
+
+**Context restored from:** T015 seed item 2; S009 next steps.
+
+**Decisions made:**
+- Bind **127.0.0.1** only; port from `SELLMANAGEMENT_DASHBOARD_PORT` (default **5055**).
+- `flask` added to **`[gui]`** optional extra (same install path as PySide6 for CI).
+- HTML via inline template in `dashboard.py` (no `templates/` tree).
+
+**Completed:** `dashboard.py`, `sellmanagement dashboard`, `tests/test_dashboard.py`, runbook + module API, trackers.
+
+**Next steps:** T019 multi-account GUI persistence + `ClientIdSelector`; T020 presets; T021 broker abstraction.
+
+**Related tasks:** T018 (DONE), T015 (OPEN)  
+**Related bugs:** —
+
+---
+
 ## [2026-04-04] — Session #009
 
 **Goal:** Implement T017 from T015 — SMTP email alerts on `SellSignal` and on failed live order transmit; update docs and trackers.
