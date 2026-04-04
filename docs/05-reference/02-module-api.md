@@ -289,6 +289,21 @@ class IBClient:
     def get_trade_status(self, trade) -> str  # 'filled' | 'cancelled' | 'done' | 'pending' | 'unknown'
 ```
 
+### `utils/ticker.py`
+
+```python
+def normalise_ticker(ticker: str) -> str:
+    """Return canonical normalised form of a ticker string (uppercase, stripped).
+    Examples: "aapl" -> "AAPL", "NASDAQ:AAPL" -> "NASDAQ:AAPL", "" -> ""."""
+
+def ticker_to_symbol(ticker: str) -> str:
+    """Extract bare symbol from a ticker token, stripping exchange prefix.
+    Examples: "NASDAQ:AAPL" -> "AAPL", "AAPL" -> "AAPL"."""
+
+def tickers_match(a: str, b: str) -> bool:
+    """Return True if two ticker strings refer to the same instrument.
+    Matches on exact normalised equality or bare-symbol equality."""
+
 ---
 
 ## GUI Modules (`src/sellmanagement/gui/`)
@@ -365,11 +380,11 @@ class IBWorker(QObject):
     positions_updated = QtCore.Signal(list)
 
     def __init__(self, parent=None)
-    def connect(self, host="127.0.0.1", port=4001, client_id=1) -> None
+    def connect(self, host="127.0.0.1", port=4001, client_id=1, use_rth=True) -> None
     def disconnect(self) -> None
     def shutdown(self, timeout: float = 2.0) -> None
     def run_on_thread(self, fn, timeout: float | None = None)  # Run callable on IB thread, return result
-    def _schedule_reconnect(self, host=None, port=None, client_id=None) -> None  # Schedule reconnect on background thread (avoids queue re-entry)
+    def _schedule_reconnect(self, host=None, port=None, client_id=None, use_rth=None) -> None  # Schedule reconnect on background thread (avoids queue re-entry)
 ```
 
 ---
@@ -398,6 +413,29 @@ class PipelineRunner(QObject):
 def get_bool(key: str, default: bool = False) -> bool
 def set_value(key: str, value) -> None
 def get_value(key: str, default=None)
+def get_use_rth() -> bool  # Returns stored use_rth flag, defaults True
+def set_use_rth(value: bool) -> None  # Persist use_rth flag via Qt QSettings
+```
+
+---
+
+### `widgets.py` — `SettingsWidget`
+
+```python
+class SettingsWidget(QtWidgets.QWidget):
+    connection_toggled = QtCore.Signal(bool)
+    show_premarket_toggled = QtCore.Signal(bool)
+    use_rth_checkbox: QtWidgets.QCheckBox  # "Use regular trading hours only (RTH)"
+    live_checkbox: QtWidgets.QCheckBox
+    allow_auto_send: QtWidgets.QCheckBox
+    show_premarket_checkbox: QtWidgets.QCheckBox
+    host: QtWidgets.QLineEdit
+    port: QtWidgets.QSpinBox
+    client_id: QtWidgets.QSpinBox
+    console: QtWidgets.QPlainTextEdit
+
+    @property
+    def use_rth(self) -> bool: ...  # Returns current use_rth checkbox value
 ```
 
 ---

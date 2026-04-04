@@ -146,7 +146,8 @@ class MainWindow(QtWidgets.QMainWindow):
             host = self.settings_tab.host.text()
             port = int(self.settings_tab.port.value())
             client_id = int(self.settings_tab.client_id.value())
-            self.ib_worker.connect(host=host, port=port, client_id=client_id)
+            use_rth = self.settings_tab.use_rth
+            self.ib_worker.connect(host=host, port=port, client_id=client_id, use_rth=use_rth)
         else:
             self.ib_worker.disconnect()
 
@@ -179,8 +180,9 @@ class MainWindow(QtWidgets.QMainWindow):
             host = self.settings_tab.host.text()
             port = int(self.settings_tab.port.value())
             client_id = int(self.settings_tab.client_id.value())
+            use_rth = self.settings_tab.use_rth
             try:
-                self.ib_worker.connect(host=host, port=port, client_id=client_id)
+                self.ib_worker.connect(host=host, port=port, client_id=client_id, use_rth=use_rth)
             except Exception:
                 logger.exception("Failed to connect on status click")
 
@@ -189,8 +191,9 @@ class MainWindow(QtWidgets.QMainWindow):
         host = self.settings_tab.host.text()
         port = int(self.settings_tab.port.value())
         client_id = int(self.settings_tab.client_id.value())
+        use_rth = self.settings_tab.use_rth
         try:
-            self.ib_worker.connect(host=host, port=port, client_id=client_id)
+            self.ib_worker.connect(host=host, port=port, client_id=client_id, use_rth=use_rth)
         except Exception:
             logger.exception("Auto-connect failed")
     def closeEvent(self, event):

@@ -27,6 +27,25 @@ def get_value(key: str, default=None):
     return s.value(key, default)
 
 
+# ---------------------------------------------------------------------------
+# use_rth — global flag for IB historical data requests
+# When True, only include Regular Trading Hours data (09:30–16:00 ET).
+# When False, include extended-hours data as well.
+# ---------------------------------------------------------------------------
+USE_RTH_KEY = "ib/use_rth"
+
+
+def get_use_rth() -> bool:
+    """Return the stored use_rth flag. Defaults to True (RTH only)."""
+    return get_bool(USE_RTH_KEY, default=True)
+
+
+def set_use_rth(value: bool) -> None:
+    """Persist the use_rth flag."""
+    set_value(USE_RTH_KEY, bool(value))
+
+
+
 
 
 

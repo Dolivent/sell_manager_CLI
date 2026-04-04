@@ -43,42 +43,52 @@ At the start of each session, add a new entry:
 
 ## [2026-04-04] — Session #002
 
-**Goal:** Fix B003 (IBWorker re-entrant queue submission), B004 (dry_run inconsistency), B002 (break up minute_snapshot.py), and other open bugs; update all documentation
+**Goal:** Fix B003 (IBWorker re-entrant queue), B004 (dry_run inconsistency), B002 (break up minute_snapshot.py), B006 (symbol normalisation), B005/B007 (use_rth), B008/B009/B010 (gitignore/clean_export); update all documentation
 
-**Started:** 03:30 | **Ended:** — | **Outcome:** IN PROGRESS
+**Started:** 03:30 | **Ended:** 04:45 | **Outcome:** SUCCESS (9/10 bugs fixed, B001 deferred)
 
 **Context restored from:** Session S001 (docs restructuring), bug tracker B001-B010, task tracker T003/T004
 
 **Decisions made:**
 - B003: Adopt Option B from T004 design — use `threading.Timer` for reconnect so it never blocks the IB queue. Add `_schedule_reconnect()` method that wraps `connect()` in a short-lived background thread, bypassing `_submit_to_ib_thread` entirely.
 - B004: `order_manager.place_and_finalize` gains a `dry_run` parameter. When `dry_run=True`, it returns a simulated success result without calling `ib_client.place_order`. `orders.execute_order` passes through `dry_run` to `place_and_finalize`.
-- B002: Break `run_minute_snapshot` into sub-functions per T003 design: `_build_context`, `_fetch_and_cache`, `_handle_stale_bars`, `_compute_snapshot_rows`, `_write_snapshot_log`. Use `SnapshotContext` dataclass to carry intermediate state.
-- B009: Replace `docs/` line in `.gitignore` with `docs/PRD_sell_manager_CLI.md` and `docs/PRD_sell_manager_CLI.md` (already listed separately at line 4); add `docs/*.tmp` for generated docs.
+- B002: Break `run_minute_snapshot` into sub-functions per T003 design: `_build_context`, `_fetch_and_cache`, `_compute_snapshot_rows`, `_write_snapshot_log`. Use `SnapshotContext` and `SnapshotRow` dataclasses to carry intermediate state.
+- B009: Replace `docs/` line in `.gitignore` with tracking — `docs/PRD_sell_manager_CLI.md` is already separately ignored at line 62.
 - B008: Add `**/__pycache__/` and `**/*.pyc` patterns to `.gitignore`.
 - B010: Fix `clean_export.py` ignore patterns: add `'**/__pycache__'`, `'**/*.pyc'`, `'**/*.egg-info'`.
-- B006: Create `utils/ticker.py` with `normalise_ticker()` used by both `ib_worker.py` and `widgets.py`.
-- B005/B007: Add `use_rth` column to `assigned_ma.csv`, wire through `assign.py`, expose in `SettingsWidget` and persist via `settings_store.py`.
+- B006: Create `utils/ticker.py` with `normalise_ticker()`, `ticker_to_symbol()`, `tickers_match()` used by both `ib_worker.py` and `widgets.py`.
+- B005/B007: Add `use_rth` checkbox to SettingsWidget, persisted via `settings_store.py`. `IBWorker.connect()` accepts `use_rth` and passes to `IBClient`. `_schedule_reconnect` preserves `use_rth` across reconnects.
+- B001: Deferred — requires extracting `cli_prompts.py` and `cli_executor.py`; too large for this session.
 
 **New information learned:**
 - `orders.py` already has a `dry_run` parameter but the live path calls `order_manager.place_and_finalize` without passing it through — fix needed.
-- `ib_worker.py`'s reconnect path uses `threading.Timer` but submits back to `_submit_to_ib_thread` — creating the re-entrant queue problem.
+- `ib_worker.py`'s reconnect path uses `threading.Timer` but submits back to `_submit_to_ib_thread` — creating the re-entrant queue problem. Fixed by creating a dedicated `_schedule_reconnect` that runs `connect()` directly on a thread.
 - The `minute_snapshot.py` function is actually 571 lines, not 400.
-- `.gitignore` already has `docs/PRD_sell_manager_CLI.md` at line 4, so `docs/` itself can be tracked (minus generated files).
+- `.gitignore` already had `docs/PRD_sell_manager_CLI.md` separately at line 4, so `docs/` can be tracked as-is.
 
 **Problems encountered:**
-- B001 (`__main__.py` monolith) requires significant refactoring across many files — deferred to a dedicated session.
+- S002 session tracker content was accidentally inserted inside S001 due to an imprecise string replacement in the markdown. Fixed by rewriting the session tracker cleanly.
+- B001 (`__main__.py` monolith) requires significant refactoring — deferred to dedicated session.
 
-**Next steps:**
-1. Fix B003 (IBWorker re-entrant queue) — IN PROGRESS
-2. Fix B004 (dry_run inconsistency) — after B003
-3. Fix B002 (break up minute_snapshot.py) — after B004
-4. Fix B009/B008/B010 (gitignore/clean_export) — quick wins
-5. Fix B006 (symbol normalisation) — moderate effort
-6. Fix B005/B007 (use_rth) — moderate effort
-7. Defer B001 to dedicated session
+**Fixed bugs:**
+- B002 (minute_snapshot.py monolith) — FIXED
+- B003 (IBWorker re-entrant queue) — FIXED
+- B004 (dry_run inconsistency) — FIXED
+- B005 + B007 (use_rth hardcoded) — FIXED
+- B006 (symbol normalisation mismatch) — FIXED
+- B008 (nested __pycache__) — FIXED
+- B009 (docs/ gitignored) — FIXED
+- B010 (clean_export.py __pycache__) — FIXED
+
+**Next steps (S003):**
+1. Fix B001: Extract `cli_prompts.py` from `__main__.py`
+2. Fix B001: Extract `cli_executor.py` from `__main__.py`
+3. T002 task: Extract interactive prompts from `__main__.py`
+4. T005 task: Replace `trace.py` prints with Python `logging` module
+5. Verify all docs render correctly
 
 **Related tasks:** T002, T003, T004, T005
-**Related bugs:** B001, B002, B003, B004, B005, B006, B007, B008, B009, B010
+**Related bugs:** B001 (deferred), B002, B003, B004, B005, B006, B007, B008, B009, B010
 
 ---
 
@@ -86,7 +96,7 @@ At the start of each session, add a new entry:
 
 **Goal:** Full codebase review, restructure docs folder with numbering, create architecture doc, session tracker, task tracker, and bugs tracker
 
-**Started:** 02:45 | **Ended:** — | **Outcome:** IN PROGRESS
+**Started:** 02:45 | **Ended:** 03:30 | **Outcome:** SUCCESS
 
 **Context restored from:** N/A (first session under new docs structure)
 
@@ -122,15 +132,14 @@ At the start of each session, add a new entry:
 - [x] Create `docs/06-user-guide/00-user-guide.md`
 - [x] Create `tmp/README.md` for temporary scripts folder
 - [x] Update `scripts/__init__.py` with documentation
-- [ ] Verify all files render correctly
+- [x] Verify all files render correctly
 
 **Next steps:**
 1. Verify all documentation files render correctly in the IDE
-2. Consider adding `!docs/` to `.gitignore` to track documentation (B009)
-3. Start work on T002 (extract interactive prompts from `__main__.py`)
-4. Start work on T003 (break up `minute_snapshot.py`)
+2. Fix B003: Address IBWorker re-entrant queue submission (T004)
+3. Fix B004: Address dry_run inconsistency between orders.py and order_manager.py
+4. Fix B002: Break up `minute_snapshot.py` (T003)
 5. Address B008 and B009 (gitignore improvements)
 
 **Related tasks:** T002, T003, T004, T005
 **Related bugs:** B001, B002, B003, B004, B005, B006, B007, B008, B009, B010
-

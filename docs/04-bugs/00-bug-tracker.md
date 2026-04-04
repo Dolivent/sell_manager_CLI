@@ -46,12 +46,12 @@ Add a new entry for every bug, regression, or design problem you encounter or id
 | B002 | `minute_snapshot.py` is a 400+ line monolith | MEDIUM | FIXED | `minute_snapshot.py` | 2026-04-04 (S001) |
 | B003 | Re-entrant queue submission in `IBWorker._poll_positions` | MEDIUM | FIXED | `gui/ib_worker.py` | 2026-04-04 (S001) |
 | B004 | `dry_run` flag handled inconsistently across `orders.py` and `order_manager.py` | MEDIUM | FIXED | `orders.py`, `order_manager.py` | 2026-04-04 (S001) |
-| B005 | `assigned_ma.csv` has hardcoded `use_rth=False` default | LOW | OPEN | `assign.py` | 2026-04-04 (S001) |
-| B006 | Position symbol normalisation mismatch in `widgets.py` vs `ib_worker.py` | MEDIUM | OPEN | `gui/widgets.py`, `gui/ib_worker.py` | 2026-04-04 (S001) |
-| B007 | `assigned_ma.py` `use_rth` is always `False` — hardcoded | LOW | OPEN | `gui/assigned_ma.py` | 2026-04-04 (S001) |
+| B005 | `assigned_ma.csv` has hardcoded `use_rth=False` default | LOW | FIXED | `assign.py` | 2026-04-04 (S001) |
+| B006 | Position symbol normalisation mismatch in `widgets.py` vs `ib_worker.py` | MEDIUM | FIXED | `gui/widgets.py`, `gui/ib_worker.py`, `utils/ticker.py` | 2026-04-04 (S001) |
+| B007 | `assigned_ma.py` `use_rth` is always `False` — hardcoded | LOW | FIXED | `gui/assigned_ma.py` | 2026-04-04 (S001) |
 | B008 | Missing `__pycache__` / `.pyc` patterns in `.gitignore` for nested dirs | LOW | FIXED | `.gitignore` | 2026-04-04 (S001) |
 | B009 | `docs/` folder is gitignored — documentation not versioned | MEDIUM | FIXED | `.gitignore` | 2026-04-04 (S001) |
-| B010 | `__pycache__` and `.egg-info` not cleaned by `scripts/clean_export.py` | LOW | OPEN | `scripts/clean_export.py` | 2026-04-04 (S001) |
+| B010 | `__pycache__` and `.egg-info` not cleaned by `scripts/clean_export.py` | LOW | FIXED | `scripts/clean_export.py` | 2026-04-04 (S001) |
 
 ---
 
@@ -130,79 +130,71 @@ Add a new entry for every bug, regression, or design problem you encounter or id
 ## [B007] — `assigned_ma.py` `use_rth` is always `False` — hardcoded
 
 **Severity:** LOW  
-**Status:** OPEN  
+**Status:** FIXED  
 **Component:** `gui/assigned_ma.py`  
 **Discovered:** 2026-04-04 (S001)  
-**Last Updated:** 2026-04-04
+**Last Updated:** 2026-04-04 (session S002)
 
-**Summary:** The `AssignedMAStore` class initialises `use_rth = False` in its `__init__` and stores it as an instance attribute. This value is never exposed as a configurable setting and is hardcoded to `False`. Using regular trading hours only means the tool may miss data at the open/close auction if the user wants off-hours data included.
+**Summary:** The `AssignedMAStore` class had no `use_rth` concept (it was `False` in GUI). Combined fix with B005.
 
-**Steps to reproduce:**
-1. Inspect `gui/assigned_ma.py`
+**Fix / Workaround:** See B005.
 
-**Expected behavior:** `use_rth` should be configurable or at minimum documented.
-
-**Actual behavior:** `use_rth` is always `False`.
-
-**Root cause:** Design oversight — no UI control for this setting.
-
-**Fix / Workaround:** Add `use_rth` to the SettingsWidget and persist via `settings_store.py`.
+**Session fixed:** S002
 
 **Related tasks:** T001  
-**Related sessions:** S001
+**Related sessions:** S001, S002
 
 ---
 
 ## [B006] — Position symbol normalisation mismatch between widgets and ib_worker
 
 **Severity:** MEDIUM  
-**Status:** OPEN  
-**Component:** `gui/widgets.py`, `gui/ib_worker.py`  
+**Status:** FIXED  
+**Component:** `gui/widgets.py`, `gui/ib_worker.py`, `utils/ticker.py`  
 **Discovered:** 2026-04-04 (S001)  
-**Last Updated:** 2026-04-04
+**Last Updated:** 2026-04-04 (session S002)
 
-**Summary:** `ib_worker.py` builds `symbol_full` as `f"{exchange}:{symbol}"` (e.g., `NASDAQ:AAPL`) but `widgets.py`'s `on_positions_update` does token matching with a mix of string suffix checks and exchange comparisons. This can cause positions to not update in the UI when the token format from IB differs from the format in `assigned_ma.csv`.
+**Summary:** `ib_worker.py` built `symbol_full` as `f"{exchange}:{symbol}"` (e.g. `NASDAQ:AAPL`) but `widgets.py`'s `on_positions_update` used a local `norm()` function with mixed string suffix checks. This caused positions to not update in the UI when token formats differed.
 
-**Steps to reproduce:**
-1. Connect to IB with a position
-2. Observe that the PositionsWidget may not update qty/price for some tickers
+**Root cause:** Inconsistent token normalisation across modules.
 
-**Expected behavior:** All live positions update in the PositionsWidget.
+**Fix / Workaround:**
+- Created `utils/ticker.py` with `normalise_ticker()`, `ticker_to_symbol()`, and `tickers_match()`.
+- `widgets.py` now imports and uses `tickers_match()` for position matching, replacing the local `norm()` closure.
+- `ib_worker.py` imports `tickers_match` for future consistency.
+- Both modules now share the same ticker comparison logic.
 
-**Actual behavior:** Position update may be silently skipped for tickers where token format differs.
-
-**Root cause:** Inconsistent token normalisation across modules. `widgets.py` uses `norm()` with suffix matching; `ib_worker.py` uses `exchange:symbol` format.
-
-**Fix / Workaround:** Establish a single `normalise_ticker()` function used by both modules. Ensure `assigned_ma.csv` and IB token format are consistent.
+**Session fixed:** S002
 
 **Related tasks:** T001  
-**Related sessions:** S001
+**Related sessions:** S001, S002
 
 ---
 
 ## [B005] — `assigned_ma.csv` hardcodes `use_rth=False` in assign module
 
 **Severity:** LOW  
-**Status:** OPEN  
-**Component:** `assign.py`  
+**Status:** FIXED  
+**Component:** `gui/settings_store.py`, `gui/widgets.py`, `gui/ib_worker.py`, `gui/main_window.py`  
 **Discovered:** 2026-04-04 (S001)  
-**Last Updated:** 2026-04-04
+**Last Updated:** 2026-04-04 (session S002)
 
-**Summary:** `sync_assignments` and `sync_assignments_to_positions` accept `default_type`, `default_length`, `default_timeframe` parameters but not `use_rth`. The `use_rth` flag is not stored in the CSV and cannot be configured per-ticker.
+**Summary:** `sync_assignments` and `sync_assignments_to_positions` accept `default_type`, `default_length`, `default_timeframe` parameters but not `use_rth`. The `use_rth` flag was not stored and was always `True` in CLI but `False` in GUI. `AssignedMAStore` also hardcoded `use_rth = False`.
 
-**Steps to reproduce:**
-1. Inspect `assign.py`
+**Root cause:** Design gap — `use_rth` is a global IB setting but was not exposed as configurable.
 
-**Expected behavior:** `use_rth` should be configurable per assignment or at least globally.
+**Fix / Workaround:**
+- Added `get_use_rth()` / `set_use_rth()` to `gui/settings_store.py`, persisting the flag via Qt QSettings (registry on Windows).
+- Added "Use regular trading hours only (RTH)" checkbox to `SettingsWidget` in `widgets.py`, loaded from persisted settings on startup.
+- `IBWorker.connect()` now accepts `use_rth` parameter and passes it to `IBClient`.
+- `main_window.py` reads `use_rth` from `settings_tab.use_rth` property when initiating connections.
+- `_schedule_reconnect` preserves the `use_rth` value across reconnects.
+- B005 and B007 are resolved as a combined fix: `use_rth` is now a globally configurable setting persisted across sessions.
 
-**Actual behavior:** No `use_rth` configuration.
-
-**Root cause:** Design gap — `use_rth` is a global setting in `ib_client.py` but not exposed in assignment storage.
-
-**Fix / Workaround:** Add `use_rth` column to `assigned_ma.csv` and wire through `assign.py` and `ib_client.py`.
+**Session fixed:** S002
 
 **Related tasks:** T001  
-**Related sessions:** S001
+**Related sessions:** S001, S002
 
 ---
 

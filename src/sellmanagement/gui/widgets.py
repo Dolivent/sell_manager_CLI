@@ -2,6 +2,7 @@ from qtpy import QtWidgets, QtCore
 from qtpy.QtGui import QColor, QBrush, QIntValidator
 from .assigned_ma import AssignedMAStore
 from .ib_worker import IBWorker
+from ..utils.ticker import tickers_match
 from pathlib import Path
 import json
 import time as time_mod
@@ -441,34 +442,16 @@ class PositionsWidget(QtWidgets.QWidget):
     def on_positions_update(self, positions):
         # positions is expected as list of dicts with 'symbol_full','symbol','qty','price'
         # Match by full token (EXCHANGE:SYM) or by symbol-only, case-insensitive.
-        def norm(s: str) -> str:
-            return (s or "").strip().upper()
-
+        # Uses tickers_match() from utils.ticker for consistent matching across modules.
         for pos in positions:
-            pos_full = norm(pos.get("symbol_full") or pos.get("symbol") or "")
-            pos_sym = norm(pos.get("symbol") or "")
+            pos_full = (pos.get("symbol_full") or pos.get("symbol") or "")
+            pos_sym = (pos.get("symbol") or "")
             for r in range(self.table.rowCount()):
                 item = self.table.item(r, 0)
                 if not item:
                     continue
                 ticker = item.text()
-                tick_full = norm(ticker)
-                tick_sym = tick_full.split(":")[-1]
-
-                matched = False
-                # exact full match
-                if pos_full and pos_full == tick_full:
-                    matched = True
-                else:
-                    # symbol-only match
-                    if pos_sym and pos_sym == tick_sym:
-                        matched = True
-                    else:
-                        # handle case where pos_full is like 'NASDAQ:TSLA' and ticker is 'TSLA'
-                        if ":" in pos_full and tick_sym == pos_full.split(":")[-1]:
-                            matched = True
-
-                if matched:
+                if tickers_match(pos_full, ticker) or tickers_match(pos_sym, ticker):
                     try:
                         self.table.item(r, 1).setText(str(int(pos.get("qty", 0))))
                     except Exception:
@@ -997,9 +980,30 @@ class SettingsWidget(QtWidgets.QWidget):
         self.port.setValue(4001)
         self.client_id = QtWidgets.QSpinBox()
         self.client_id.setValue(1)
+        # expose use_rth as a property so main_window can read it without accessing the checkbox directly
+        self._use_rth = self.use_rth_checkbox.isChecked()
+
         self.live_checkbox = QtWidgets.QCheckBox("Live (send orders)")
         self.allow_auto_send = QtWidgets.QCheckBox("Allow auto-send (no confirmation)")
         self.allow_auto_send.setChecked(True)
+        # use_rth: restrict IB historical requests to Regular Trading Hours (default True)
+        self.use_rth_checkbox = QtWidgets.QCheckBox("Use regular trading hours only (RTH)")
+        self.use_rth_checkbox.setChecked(True)
+        # load persisted use_rth value from settings store
+        try:
+            from .settings_store import get_use_rth, set_use_rth
+            self._use_rth = get_use_rth()
+            self.use_rth_checkbox.setChecked(self._use_rth)
+            # persist on change
+            def _on_use_rth_changed(checked):
+                self._use_rth = bool(checked)
+                try:
+                    set_use_rth(bool(checked))
+                except Exception:
+                    pass
+            self.use_rth_checkbox.toggled.connect(_on_use_rth_changed)
+        except Exception:
+            self._use_rth = True
         # show pre/post-market signals in the signals tab (default: False)
         self.show_premarket_checkbox = QtWidgets.QCheckBox("Show pre/post-market")
         self.show_premarket_checkbox.setChecked(False)
@@ -1031,6 +1035,7 @@ class SettingsWidget(QtWidgets.QWidget):
         row_h.addStretch()
         layout.addRow(row_h)
         layout.addRow(self.allow_auto_send)
+        layout.addRow(self.use_rth_checkbox)
         layout.addRow(self.show_premarket_checkbox)
         # console log for pipeline/ib events
         self.console = QtWidgets.QPlainTextEdit()
@@ -1045,5 +1050,10 @@ class SettingsWidget(QtWidgets.QWidget):
         # emit connect request so the main application can handle connect
         # (connect button requests connection; status light can be used to disconnect)
         self.connection_toggled.emit(True)
+
+    @property
+    def use_rth(self) -> bool:
+        """Return the current use_rth checkbox value."""
+        return bool(self.use_rth_checkbox.isChecked())
 
 

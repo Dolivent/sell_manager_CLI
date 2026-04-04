@@ -1,6 +1,7 @@
 from qtpy.QtCore import QObject, Signal, QTimer
 from concurrent.futures import ThreadPoolExecutor
 from ..ib_client import IBClient
+from ..utils.ticker import tickers_match
 from pathlib import Path
 import time
 import logging
@@ -33,13 +34,14 @@ class IBWorker(QObject):
         self._call_queue = queue.Queue()
         self._ib_thread = None
 
-    def connect(self, host="127.0.0.1", port=4001, client_id=1):
+    def connect(self, host="127.0.0.1", port=4001, client_id=1, use_rth=True):
         # run connect on the dedicated IB thread to ensure consistent event loop behavior
         def _do():
             try:
                 self._client.host = host
                 self._client.port = port
                 self._client.client_id = client_id
+                self._client.use_rth = use_rth
                 ok = self._client.connect()
                 # success: reset backoff and cancel any pending reconnects
                 self._backoff_seconds = 1
@@ -65,7 +67,7 @@ class IBWorker(QObject):
                             self._reconnect_timer.cancel()
                         except Exception:
                             pass
-                    self._reconnect_timer = threading.Timer(backoff, lambda: self._schedule_reconnect(host=h, port=p, client_id=cid))
+                    self._reconnect_timer = threading.Timer(backoff, lambda: self._schedule_reconnect(host=h, port=p, client_id=cid, use_rth=use_rth))
                     self._reconnect_timer.daemon = True
                     self._reconnect_timer.start()
                     self._backoff_seconds = min(self._backoff_seconds * 2, self._max_backoff)
@@ -194,7 +196,8 @@ class IBWorker(QObject):
                     try:
                         if self._saved_conn_params:
                             h, p, cid = self._saved_conn_params
-                            self._schedule_reconnect(host=h, port=p, client_id=cid)
+                            rth = getattr(self._client, 'use_rth', True)
+                            self._schedule_reconnect(host=h, port=p, client_id=cid, use_rth=rth)
                     except Exception:
                         logger.exception("Failed to schedule reconnect from poll errors")
                 return
@@ -260,7 +263,7 @@ class IBWorker(QObject):
         except Exception:
             logger.exception("Failed to submit function to IB thread")
 
-    def _schedule_reconnect(self, host=None, port=None, client_id=None):
+    def _schedule_reconnect(self, host=None, port=None, client_id=None, use_rth=None):
         """Schedule a reconnect attempt on a short-lived background thread.
 
         Runs connect() directly on a daemon thread, bypassing the IB queue entirely.
@@ -272,10 +275,14 @@ class IBWorker(QObject):
         h = host or "127.0.0.1"
         p = port or 4001
         cid = client_id or 1
+        # use_rth: prefer explicit arg, then saved client value, then default True
+        rth = use_rth
+        if rth is None:
+            rth = getattr(self._client, 'use_rth', True)
 
         def _reconnect():
             try:
-                self.connect(h, p, cid)
+                self.connect(h, p, cid, use_rth=rth)
             except Exception:
                 logger.exception("Reconnect thread failed")
 
