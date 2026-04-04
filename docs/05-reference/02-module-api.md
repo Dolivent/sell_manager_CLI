@@ -1,11 +1,27 @@
 # Module API Reference
 
-> **Version:** 1.6 | **Last Updated:** 2026-04-04 (S012)  
+> **Version:** 1.7 | **Last Updated:** 2026-04-04 (S013)  
 > Covers public-facing functions and classes only. Internal helpers are omitted.
 
 ---
 
 ## Core Modules (`src/sellmanagement/`)
+
+---
+
+### `brokers/` package
+
+```python
+# brokers/__init__.py
+def create_broker(name: str = "ibkr", **kwargs) -> IBKRBroker:
+    """Return a broker adapter. Raises ValueError for unknown ``name``."""
+
+# brokers/ibkr.py
+class IBKRBroker:
+    """Interactive Brokers session via ``ib_insync`` (connect, historical bars, orders)."""
+```
+
+`ib_client.IBClient` is an alias of `IBKRBroker` for backward compatibility.
 
 ---
 
@@ -389,8 +405,10 @@ def run_minute_snapshot(ib_client, tickers: List[str], concurrency: int = 32) ->
 
 ### `ib_client.py`
 
+Shim: ``IBClient`` is an alias of ``brokers.ibkr.IBKRBroker``.
+
 ```python
-class IBClient:
+class IBClient:  # same as IBKRBroker
     def __init__(self, host: str = "127.0.0.1", port: int = 4001, client_id: int = 1, use_rth: bool = True)
     def connect(self, timeout: int = 10) -> bool
     def disconnect(self) -> None

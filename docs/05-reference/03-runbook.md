@@ -1,6 +1,6 @@
 # Operational Runbook
 
-> **Version:** 1.5 | **Last Updated:** 2026-04-04 (S012)
+> **Version:** 1.6 | **Last Updated:** 2026-04-04 (S013)
 
 ---
 
@@ -32,7 +32,11 @@ Optional dev tools: `pip install -e ".[dev]"` (includes `pytest` for future/ad-h
 - IB Gateway or TWS running on `127.0.0.1:4001` (default)
 - IB account logged in (paper trading recommended for first use)
 
-### 1b. Install
+### 1b. Broker layer
+
+The Interactive Brokers implementation lives under `src/sellmanagement/brokers/ibkr.py` as **`IBKRBroker`**. Code may still import **`sellmanagement.ib_client.IBClient`** — it is an alias of `IBKRBroker`. Use **`sellmanagement.brokers.create_broker("ibkr", ...)`** when adding multi-broker selection later.
+
+### 1c. Install
 
 ```bash
 # Create and activate virtual environment
@@ -51,7 +55,7 @@ pip install ".[gui]"    # GUI extras (PySide6/qtpy)
 pip install -r requirements.txt
 ```
 
-### 1c. First Run
+### 1d. First Run
 
 ```bash
 # CLI mode (dry-run, safe)

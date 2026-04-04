@@ -25,7 +25,7 @@
 
 ---
 
-## Backlog Summary (T006–T020+)
+## Backlog Summary (T006–T021+)
 
 | ID | Title | Status | Priority | Detail |
 |----|-------|--------|----------|--------|
@@ -44,10 +44,11 @@
 | T018 | Web dashboard (Flask) | DONE | P3 | [T018](tracker/T018-web-dashboard.md) — from T015 |
 | T019 | Client ID GUI persistence | DONE | P3 | [T019](tracker/T019-multi-account-client-id.md) — from T015 |
 | T020 | MA preset JSON import/export | DONE | P3 | [T020](tracker/T020-ma-presets-json.md) — from T015 |
+| T021 | Broker package (`brokers/ibkr`) | DONE | P3 | [T021](tracker/T021-broker-adapters.md) — from T015 |
 
 ## Active Tasks
 
-**T015** remains an **OPEN** parking lot for unprioritised product ideas (see tracker file). **T016**–**T020** are **DONE** (S008–S012). T006–T014 remain **DONE** (S007).
+**T015** remains an **OPEN** parking lot for unprioritised product ideas (see tracker file). **T016**–**T021** are **DONE** (S008–S013). T006–T014 remain **DONE** (S007).
 
 ---
 
@@ -232,6 +233,11 @@ Replace the `trace.py` append-only approach with Python's `logging` module (with
 **Status:** DONE | **Session:** S012 | **Detail:** [`T020-ma-presets-json.md`](tracker/T020-ma-presets-json.md)  
 **Resolution:** `export_assignments_json` / `import_assignments_json`, CLI `ma-export` / `ma-import`, GUI preset buttons; `tests/test_ma_presets.py`.
 
+### T021 — Broker adapters
+
+**Status:** DONE | **Session:** S013 | **Detail:** [`T021-broker-adapters.md`](tracker/T021-broker-adapters.md)  
+**Resolution:** `brokers/ibkr.py` (`IBKRBroker`), `create_broker`, `ib_client` alias; `tests/test_brokers.py`.
+
 ---
 
 ## Completed Tasks
@@ -257,6 +263,7 @@ Replace the `trace.py` append-only approach with Python's `logging` module (with
 | T018 | Web dashboard | DONE | S010 |
 | T019 | Client ID GUI + QSettings | DONE | S011 |
 | T020 | MA presets JSON | DONE | S012 |
+| T021 | Broker adapters package | DONE | S013 |
 
 ---
 

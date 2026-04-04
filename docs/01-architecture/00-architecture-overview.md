@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> **Version:** 1.1 | **Status:** Current | **Last Updated:** 2026-04-04 (S004)
+> **Version:** 1.2 | **Status:** Current | **Last Updated:** 2026-04-04 (S013)
 
 ---
 
@@ -37,7 +37,8 @@
 │               │                                                     │
 │    ┌──────────▼────────────────────────────────────────────────┐   │
 │    │                    IB Communication Layer                   │   │
-│    │  ib_client.py   - ib_insync wrapper                        │   │
+│    │  brokers/ibkr.py - IBKR adapter (ib_insync)                  │   │
+│    │  ib_client.py   - alias shim → IBKRBroker                   │   │
 │    │  ib_worker.py   - Qt QObject worker (GUI thread)           │   │
 │    └──────────┬────────────────────────────────────────────────┘   │
 │               │                                                     │

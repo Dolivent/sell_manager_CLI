@@ -41,6 +41,27 @@ At the start of each session, add a new entry:
 
 ---
 
+## [2026-04-04] — Session #013
+
+**Goal:** Implement T021 from T015 — `sellmanagement.brokers` package with IBKR in `ibkr.py`.
+
+**Started:** — | **Ended:** — | **Outcome:** SUCCESS
+
+**Context restored from:** T015 seed item “broker adapters beyond IBKR”; S012 next steps.
+
+**Decisions made:**
+- Move implementation to **`IBKRBroker`** in `brokers/ibkr.py`; keep **`ib_client.IBClient`** as a one-line alias so CLI/GUI imports stay stable.
+- Add **`create_broker("ibkr", **kwargs)`** as the extension point for future backends.
+
+**Completed:** `brokers/` package, shim `ib_client.py`, `tests/test_brokers.py`, architecture + module API + runbook.
+
+**Next steps:** T015 bucket is fully spawned through T021; pick new product ideas only if scope expands.
+
+**Related tasks:** T021 (DONE), T015 (OPEN)  
+**Related bugs:** —
+
+---
+
 ## [2026-04-04] — Session #012
 
 **Goal:** Implement T020 from T015 — JSON import/export for MA assignment presets (CLI + GUI).
