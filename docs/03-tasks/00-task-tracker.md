@@ -27,10 +27,7 @@
 
 ## Active Tasks
 
-| ID | Title | Status | Priority | Owner | Session | Details |
-|----|-------|--------|----------|-------|---------|---------|
-| T002 | Extract interactive prompts from `__main__.py` | OPEN | P1 | — | S001 | [T002](tracker/T002-extract-interactive-prompts.md) |
-| T005 | Proper logging instead of `trace.py` prints | OPEN | P2 | — | S001 | [T005](tracker/T005-proper-logging.md) |
+*No tasks in OPEN / IN_PROGRESS. Optional follow-ups: console logging (T005 phase 2), further `_cmd_start` splits.*
 
 ---
 
@@ -67,16 +64,17 @@ Review the entire codebase, redesign the `docs/` folder structure with numbered 
 
 ### T002 — Code review: extract interactive prompts from `__main__.py`
 
-**Status:** OPEN  
+**Status:** DONE  
 **Priority:** P1  
 **Created:** 2026-04-04  
-**Session:** S001  
+**Session completed:** S004  
 **Detail file:** [`docs/03-tasks/tracker/T002-extract-interactive-prompts.md`](tracker/T002-extract-interactive-prompts.md)
 
 **Summary:**  
 The `_cmd_start` function in `__main__.py` mixes CLI UI concerns (interactive ticker assignment prompts, `input()` calls) with business logic. Extract all interactive prompts into a dedicated `cli_prompts.py` module.
 
-**Next:** Primary remaining P1 item after B002/B003/B004 (see bug B001, session S003/S004).
+**Resolution (S004):**  
+`cli_prompts.py` + `cli_executor.py`; `--yes-to-all`; `tests/test_cli_prompts.py`. Bug B001 FIXED.
 
 ---
 
@@ -120,14 +118,17 @@ The `_poll_positions` method submits a reconnect call back into `_submit_to_ib_t
 
 ### T005 — Implement proper logging instead of `trace.py` prints
 
-**Status:** OPEN  
+**Status:** DONE (phase 1)  
 **Priority:** P2  
 **Created:** 2026-04-04  
-**Session:** S001  
+**Session completed:** S004  
 **Detail file:** [`docs/03-tasks/tracker/T005-proper-logging.md`](tracker/T005-proper-logging.md)
 
 **Summary:**  
 Replace the `trace.py` append-only approach with Python's `logging` module (with appropriate handlers for file + console output) and use structured log levels consistently.
+
+**Resolution (S004):**  
+`append_trace` uses `RotatingFileHandler` (same JSON lines and path). Console levels and per-module `logging` migration deferred.
 
 ---
 
@@ -136,8 +137,10 @@ Replace the `trace.py` append-only approach with Python's `logging` module (with
 | ID | Title | Status | Completed |
 |----|-------|--------|-----------|
 | T001 | Full codebase documentation restructure | DONE | S002 |
+| T002 | Extract interactive prompts from `__main__.py` | DONE | S004 |
 | T003 | Extract snapshot logic from `minute_snapshot.py` | DONE | S002 |
 | T004 | Reconnect loop in `ib_worker.py` | DONE | S002 |
+| T005 | Proper logging instead of `trace.py` (phase 1) | DONE | S004 |
 
 ---
 

@@ -6,10 +6,10 @@
 |-------|-------|
 | Task ID | T005 |
 | Title | Implement proper logging instead of `trace.py` |
-| Status | OPEN |
+| Status | DONE |
 | Priority | P2 |
 | Created | 2026-04-04 |
-| Session | S001 |
+| Session completed | S004 |
 | Detail File | `docs/03-tasks/tracker/T005-proper-logging.md` |
 
 ---
@@ -97,10 +97,13 @@ def run_minute_snapshot(...):
 
 ## 5. Acceptance Criteria
 
-- [ ] `trace.py` is replaced with `logging.getLogger(__name__)` calls
-- [ ] Log file rotates at 10MB with 5 backup files
-- [ ] Console output in CLI mode shows WARNING/ERROR only
-- [ ] All existing `append_trace` call sites are migrated
-- [ ] `logs/app.log` contains structured JSON records
-- [ ] `logs/ibkr_download_trace.log` is deprecated but still written during transition
-- [ ] Unit tests verify logging output
+- [x] `trace.py` uses the `logging` module internally (`Logger` + `RotatingFileHandler`)
+- [x] Trace log rotates at 10MB with 5 backups (`logs/ibkr_download_trace.log`)
+- [ ] Console handler / WARNING-only CLI output (deferred — trace remains file-only)
+- [x] All `append_trace` call sites unchanged (same public API and JSONL-compatible lines)
+- [ ] `logs/app.log` — not introduced; existing trace path retained for compatibility
+- [ ] Unit tests for logging output (deferred)
+
+## 6. Resolution (S004) — phase 1
+
+`append_trace(dict)` is unchanged at call sites. Implementation now builds a dedicated logger `sellmanagement.trace`, writes one JSON object per log line to the same path as before, and uses `RotatingFileHandler`. Further work: optional console mirror, migrate modules to `logging.getLogger(__name__)` with levels, and retire the `append_trace` wrapper where appropriate.

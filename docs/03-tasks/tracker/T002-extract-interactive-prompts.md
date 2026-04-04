@@ -6,10 +6,10 @@
 |-------|-------|
 | Task ID | T002 |
 | Title | Extract interactive prompts from `__main__.py` |
-| Status | OPEN |
+| Status | DONE |
 | Priority | P1 |
 | Created | 2026-04-04 |
-| Session | S001 |
+| Session completed | S004 |
 | Detail File | `docs/03-tasks/tracker/T002-extract-interactive-prompts.md` |
 
 ---
@@ -79,8 +79,13 @@ def prompt_timeframe_for_ticker(ticker: str) -> str:
 
 ## 5. Acceptance Criteria
 
-- [ ] `cli_prompts.py` contains all `input()` calls from `_cmd_start`
-- [ ] `_cmd_start` calls `cli_prompts.*` instead of calling `input()` directly
-- [ ] Unit tests can mock the prompts with `unittest.mock.patch('builtins.input')`
-- [ ] The `--yes-to-all` flag is added for scripted live runs
-- [ ] `docs/05-reference/02-module-api.md` is updated to document `cli_prompts.py`
+- [x] `cli_prompts.py` contains all `input()` calls from `_cmd_start` (MA assignment + live confirm)
+- [x] `_cmd_start` calls `cli_prompts.prompt_ma_assignment` / `confirm_live_transmit` instead of inline `input()`
+- [x] Unit tests use `reader=` injection and `patch('builtins.input')` on `confirm_live_transmit`
+- [x] `--yes-to-all` added on `start` with `--live` for scripted runs
+- [x] `docs/05-reference/02-module-api.md` documents `cli_prompts.py` and `cli_executor.py`
+
+## 6. Resolution (S004)
+
+- Live transmit body moved to `cli_executor.transmit_live_sell_signals` (closes B001 scope together with prompts).
+- `tests/test_cli_prompts.py` added (`unittest`).

@@ -42,7 +42,7 @@ Add a new entry for every bug, regression, or design problem you encounter or id
 
 | ID | Title | Severity | Status | Component | Discovered |
 |----|-------|----------|--------|-----------|------------|
-| B001 | `__main__.py` is a 400+ line monolith | MEDIUM | OPEN | `__main__.py` | 2026-04-04 (S001) |
+| B001 | `__main__.py` is a 400+ line monolith | MEDIUM | FIXED | `__main__.py`, `cli_prompts.py`, `cli_executor.py` | 2026-04-04 (S001) |
 | B002 | `minute_snapshot.py` is a 400+ line monolith | MEDIUM | FIXED | `minute_snapshot.py` | 2026-04-04 (S001) |
 | B003 | Re-entrant queue submission in `IBWorker._poll_positions` | MEDIUM | FIXED | `gui/ib_worker.py` | 2026-04-04 (S001) |
 | B004 | `dry_run` flag handled inconsistently across `orders.py` and `order_manager.py` | MEDIUM | FIXED | `orders.py`, `order_manager.py` | 2026-04-04 (S001) |
@@ -298,10 +298,10 @@ Add a new entry for every bug, regression, or design problem you encounter or id
 ## [B001] — `__main__.py` is a 400+ line monolith
 
 **Severity:** MEDIUM  
-**Status:** OPEN  
-**Component:** `__main__.py`  
+**Status:** FIXED  
+**Component:** `__main__.py`, `cli_prompts.py`, `cli_executor.py`  
 **Discovered:** 2026-04-04 (S001)  
-**Last Updated:** 2026-04-04 (S003)
+**Last Updated:** 2026-04-04 (S004)
 
 **Summary:** `_cmd_start` in `__main__.py` is approximately 400 lines. It mixes IB connection logic, live position fetching, assignment CSV management, interactive assignment prompts, minute loop scheduling, snapshot execution, signal generation, order preparation, order execution, and terminal output formatting — all in one function.
 
@@ -311,13 +311,20 @@ Add a new entry for every bug, regression, or design problem you encounter or id
 
 **Expected behavior:** `_cmd_start` should delegate to focused modules; interactive prompts should be in a separate `cli_prompts.py`.
 
-**Actual behavior:** One large function handling many concerns.
+**Actual behavior (before fix):** One large function handling many concerns.
 
 **Root cause:** The CLI was built as a monolithic script before the GUI existed. Responsibilities were never split.
 
-**Fix / Workaround:** Extract interactive assignment prompts into `cli_prompts.py`. Extract order execution logic into a `cli_executor.py`. Keep `_cmd_start` as the orchestration layer.
+**Fix / Workaround (S004):**
+- Added `cli_prompts.py`: MA assignment menu (`prompt_ma_assignment`, `build_ma_assignment_options`, `read_ma_selection`, etc.) and `confirm_live_transmit(assume_yes=...)` for live YES gating.
+- Added `cli_executor.py`: `transmit_live_sell_signals(ib, generated, snapshot_ts=...)` for the live SellSignal transmit path (intent idempotency, qty cap, `execute_order`).
+- `_cmd_start` now calls these modules; startup and runtime assignment flows both use `prompt_ma_assignment`.
+- CLI flag `--yes-to-all` (with `--live`) skips the interactive confirmation for scripted runs.
+- `_cmd_start` remains the orchestration shell (minute loop, sync, snapshot table printing); further splits (e.g. table formatting) are optional.
 
-**Note (S003):** A corrupted f-string in the live-order position cap loop (`f\":{sym}\"`) was repaired; it was a SyntaxError unrelated to the structural refactor but blocked running the CLI.
+**Note (S003):** A corrupted f-string in the live-order position cap loop was repaired (SyntaxError).
 
-**Related tasks:** T002 (dedicated task for this)  
-**Related sessions:** S001, S003
+**Session fixed:** S004
+
+**Related tasks:** T002  
+**Related sessions:** S001, S003, S004

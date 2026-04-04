@@ -1,14 +1,13 @@
 from .config import Config
 from .ib_client import IBClient
 from .assign import set_assignment, get_assignments_list, sync_assignments_to_positions
+from .cli_executor import transmit_live_sell_signals
+from .cli_prompts import confirm_live_transmit, prompt_ma_assignment
 from .downloader import batch_download_daily, persist_batch_halfhours
 from .cache import merge_bars
 from datetime import datetime, timedelta
-import hashlib
 from .minute_snapshot import run_minute_snapshot
 import os
-from .orders import prepare_close_order, execute_order
-from .intent_store import exists as intent_exists, write_intent as intent_write, update_intent as intent_update
 import argparse
 from typing import Optional
 
@@ -29,6 +28,7 @@ def _cmd_start(args: argparse.Namespace) -> None:
             return
 
     config = Config(dry_run=not getattr(args, 'live', False), client_id=getattr(args, 'client_id', 1))
+    yes_to_all = bool(getattr(args, "yes_to_all", False))
 
     use_rth_flag = not getattr(args, 'no_rth', False)
     ib = IBClient(host=config.host, port=config.port, client_id=config.client_id, use_rth=use_rth_flag)
@@ -180,46 +180,9 @@ def _cmd_start(args: argparse.Namespace) -> None:
             for tk in need_assign:
                 print(f" - {tk}")
 
-            # build paired options: SMA on left, EMA on right for each length/timeframe
-            lengths = [5, 10, 20, 50, 100, 150, 200]
-            timeframes = ['1H', 'D']
-            options = []
-            for ln in lengths:
-                for tf in timeframes:
-                    options.append(('SMA', ln, tf))
-                    options.append(('EMA', ln, tf))
-
-            # default selection index for convenience (SMA,50,1H)
-            try:
-                default_idx = options.index(('SMA', 50, '1H')) + 1
-            except Exception:
-                default_idx = 1
-
             for tk in need_assign:
                 try:
-                    print(f"\nAssign MA for {tk}. Choose from the numbered list below (enter number, default {default_idx}):")
-                    # print two columns per line (SMA left, EMA right)
-                    for j in range(0, len(options), 2):
-                        left_num = j + 1
-                        right_num = j + 2
-                        fam_l, ln_l, tf_l = options[j]
-                        fam_r, ln_r, tf_r = options[j + 1]
-                        left_label = f"{fam_l} {ln_l} {tf_l}"
-                        right_label = f"{fam_r} {ln_r} {tf_r}"
-                        print(f" {left_num:3d}) {left_label:16s} {right_num:3d}) {right_label}")
-
-                    sel = input(f"Selection [default {default_idx}]: ").strip()
-                    if not sel:
-                        sel_idx = default_idx
-                    else:
-                        try:
-                            sel_idx = int(sel)
-                        except Exception:
-                            sel_idx = default_idx
-                    if sel_idx < 1 or sel_idx > len(options):
-                        sel_idx = default_idx
-                    fam, ln, tf = options[sel_idx - 1]
-                    # persist assignment; timeframe is always present
+                    fam, ln, tf = prompt_ma_assignment(tk)
                     set_assignment(tk, fam, int(ln), timeframe=tf)
                     print(f"Assigned {tk} -> {fam}({ln}) {tf}")
                 except Exception as e:
@@ -357,43 +320,9 @@ def _cmd_start(args: argparse.Namespace) -> None:
                                 for tk in need_assign:
                                     print(f" - {tk}")
 
-                                lengths = [5, 10, 20, 50, 100, 150, 200]
-                                timeframes = ['1H', 'D']
-                                options = []
-                                for ln in lengths:
-                                    for tf in timeframes:
-                                        options.append(('SMA', ln, tf))
-                                        options.append(('EMA', ln, tf))
-
-                                try:
-                                    default_idx = options.index(('SMA', 50, '1H')) + 1
-                                except Exception:
-                                    default_idx = 1
-
-                                from .assign import set_assignment
                                 for tk in need_assign:
                                     try:
-                                        print(f"\nAssign MA for {tk}. Choose from the numbered list below (enter number, default {default_idx}):")
-                                        for j in range(0, len(options), 2):
-                                            left_num = j + 1
-                                            right_num = j + 2
-                                            fam_l, ln_l, tf_l = options[j]
-                                            fam_r, ln_r, tf_r = options[j + 1]
-                                            left_label = f"{fam_l} {ln_l} {tf_l}"
-                                            right_label = f"{fam_r} {ln_r} {tf_r}"
-                                            print(f" {left_num:3d}) {left_label:16s} {right_num:3d}) {right_label}")
-
-                                        sel = input(f"Selection [default {default_idx}]: ").strip()
-                                        if not sel:
-                                            sel_idx = default_idx
-                                        else:
-                                            try:
-                                                sel_idx = int(sel)
-                                            except Exception:
-                                                sel_idx = default_idx
-                                        if sel_idx < 1 or sel_idx > len(options):
-                                            sel_idx = default_idx
-                                        fam, ln, tf = options[sel_idx - 1]
+                                        fam, ln, tf = prompt_ma_assignment(tk)
                                         set_assignment(tk, fam, int(ln), timeframe=tf)
                                         print(f"Assigned {tk} -> {fam}({ln}) {tf}")
                                     except Exception as e:
@@ -443,106 +372,8 @@ def _cmd_start(args: argparse.Namespace) -> None:
                         # If live mode requested, attempt to execute sell signals using IB client
                         try:
                             if not config.dry_run:
-                                # one-time confirmation prompt to avoid accidental live orders
-                                confirm = input('CONFIRM transmit live orders now? Type YES to proceed: ').strip()
-                                if confirm == 'YES':
-                                    # iterate generated signals and transmit sell orders for SellSignal entries
-                                    for e in gen:
-                                        try:
-                                            if e.get('decision') == 'SellSignal':
-                                                # idempotency: build intent id and skip if already attempted
-                                                ticker = e.get('ticker')
-                                                decision = e.get('decision')
-                                                # bucket timestamp if present, else use current snapshot ts
-                                                bucket_ts = e.get('ts') or ts or ""
-                                                try:
-                                                    intent_key = f"{ticker}:{bucket_ts}:{decision}"
-                                                    intent_id = hashlib.sha256(intent_key.encode('utf-8')).hexdigest()
-                                                except Exception:
-                                                    intent_id = None
-
-                                                try:
-                                                    if intent_id and intent_exists(intent_id):
-                                                        append_trace({'event': 'intent_duplicate', 'ticker': ticker, 'intent_id': intent_id})
-                                                        continue
-                                                except Exception:
-                                                    # if intent store fails, continue cautiously
-                                                    pass
-
-                                                # use the live position size included in the signal (if available)
-                                                pos = e.get('position')
-                                                try:
-                                                    qty = int(abs(round(float(pos)))) if pos is not None else None
-                                                except Exception:
-                                                    qty = None
-                                                if not qty or qty <= 0:
-                                                    # nothing to close - skip transmitting
-                                                    append_trace({'event': 'order_skipped', 'ticker': ticker, 'reason': 'no_position', 'position': pos})
-                                                    continue
-
-                                                # authoritative check: re-fetch live positions and cap qty before transmit
-                                                try:
-                                                    cur_positions = ib.positions()
-                                                except Exception:
-                                                    cur_positions = None
-                                                cur_pos_val = None
-                                                try:
-                                                    if cur_positions:
-                                                        for p in cur_positions:
-                                                            try:
-                                                                contract = getattr(p, 'contract', None) or getattr(p, 'contract', None)
-                                                                if contract is None:
-                                                                    continue
-                                                                sym = getattr(contract, 'symbol', None) or getattr(contract, 'localSymbol', None)
-                                                                exchange = getattr(contract, 'exchange', None) or ''
-                                                                token_full = f"{exchange}:{sym}" if exchange else sym
-                                                                if token_full and (ticker.endswith(f":{sym}") or ticker.endswith(sym) or token_full == ticker):
-                                                                    cur_pos_val = getattr(p, 'position', None) or getattr(p, 'pos', None) or 0
-                                                                    break
-                                                            except Exception:
-                                                                continue
-                                                except Exception:
-                                                    cur_pos_val = None
-
-                                                if cur_pos_val is not None:
-                                                    try:
-                                                        cap_qty = int(abs(round(float(cur_pos_val))))
-                                                    except Exception:
-                                                        try:
-                                                            cap_qty = int(abs(cur_pos_val))
-                                                        except Exception:
-                                                            cap_qty = qty
-                                                    if cap_qty <= 0:
-                                                        append_trace({'event': 'order_skipped', 'ticker': ticker, 'reason': 'no_position_at_transmit', 'sig_qty': qty, 'cur_pos': cur_pos_val})
-                                                        continue
-                                                    if qty > cap_qty:
-                                                        append_trace({'event': 'qty_capped', 'ticker': ticker, 'sig_qty': qty, 'capped_to': cap_qty})
-                                                        qty_to_send = cap_qty
-                                                    else:
-                                                        qty_to_send = qty
-                                                else:
-                                                    qty_to_send = qty
-
-                                                # persist intent before attempting send
-                                                try:
-                                                    if intent_id:
-                                                        intent_write({'intent_id': intent_id, 'ticker': ticker, 'decision': decision, 'bucket_ts': bucket_ts, 'requested_qty': qty, 'qty_to_send': qty_to_send, 'status': 'attempting', 'ts': datetime.now().isoformat()})
-                                                except Exception:
-                                                    pass
-
-                                                # prepare close for full-size quantity (capped)
-                                                po = prepare_close_order(ticker, qty_to_send, order_type='MKT')
-                                                # execute_order performs prepare->checks->place
-                                                res = execute_order(ib, po, dry_run=False)
-                                                append_trace({'event': 'order_attempt', 'ticker': ticker, 'position': pos, 'qty': qty_to_send, 'result': str(res)})
-                                                # update intent with result
-                                                try:
-                                                    if intent_id:
-                                                        intent_update(intent_id, {'status': res.get('status'), 'result': res, 'completed_ts': datetime.now().isoformat()})
-                                                except Exception:
-                                                    pass
-                                        except Exception as ex:
-                                            append_trace({'event': 'order_attempt_failed', 'ticker': e.get('ticker'), 'error': str(ex)})
+                                if confirm_live_transmit(assume_yes=yes_to_all):
+                                    transmit_live_sell_signals(ib, gen, snapshot_ts=ts or "")
                                 else:
                                     print('Live transmit aborted by user; no orders sent')
                         except Exception:
@@ -641,6 +472,11 @@ def main(argv: Optional[list] = None) -> None:
     p_start = sub.add_parser("start", help="Start the sellmanagement service")
     p_start.add_argument("--no-rth", action="store_true", help="Do not restrict historical requests to regular trading hours")
     p_start.add_argument("--live", action="store_true", help="Enable live mode (must be explicit). When enabled, an interactive confirmation is required before transmitting orders.")
+    p_start.add_argument(
+        "--yes-to-all",
+        action="store_true",
+        help="With --live, skip the interactive YES confirmation (for scripted runs only).",
+    )
     p_start.add_argument("--client-id", type=int, default=1)
     p_start.add_argument("--gui", action="store_true", help="Launch the GUI instead of running the CLI")
 

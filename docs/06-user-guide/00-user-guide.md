@@ -215,7 +215,8 @@ Every signal is appended to `logs/signals.jsonl`:
 3. **Review signals:** Check `logs/signals.jsonl` to confirm signals match your expectations.
 4. **Enable live:** `python -m sellmanagement --live`
 5. **Confirm each order:** When a `SellSignal` appears, type `YES` and press Enter to transmit.
-6. **Monitor:** Watch `logs/intents.jsonl` for order status.
+6. **Scripted runs (advanced):** `python -m sellmanagement start --live --yes-to-all` skips the interactive confirmation. Use only when you fully accept automated transmission risk.
+7. **Monitor:** Watch `logs/intents.jsonl` for order status.
 
 ---
 

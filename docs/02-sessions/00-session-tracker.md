@@ -41,6 +41,59 @@ At the start of each session, add a new entry:
 
 ---
 
+## [2026-04-04] — Session #005
+
+**Goal:** Re-run automated tests and verify IB Gateway connectivity after the user enabled TWS/Gateway.
+
+**Started:** — | **Ended:** — | **Outcome:** SUCCESS
+
+**Context restored from:** Session S004; user note that Gateway was previously off.
+
+**Completed:**
+- `python -m unittest discover -s tests -v` with `PYTHONPATH=src` — 7 tests, all OK.
+- Smoke test: `IBClient(host=127.0.0.1, port=4001, client_id=99).connect(timeout=8)` returned `True`, then disconnect.
+
+**Next steps:** Run `python -m sellmanagement` (or `sellmanagement start`) locally for a full minute loop when you want live snapshots; ensure client id does not clash with other sessions.
+
+**Related tasks:** —  
+**Related bugs:** —
+
+---
+
+## [2026-04-04] — Session #004
+
+**Goal:** Close B001 / T002 by extracting CLI prompts and live transmit logic; add `--yes-to-all`; begin T005 by routing `append_trace` through rotating logging; add unit tests; refresh trackers and module API.
+
+**Started:** 14:00 | **Ended:** 15:30 | **Outcome:** SUCCESS
+
+**Context restored from:** Session S003 next steps, `docs/03-tasks/tracker/T002-extract-interactive-prompts.md`, `docs/03-tasks/tracker/T005-proper-logging.md`, `__main__.py`.
+
+**Decisions made:**
+- Implement T002 as two modules: `cli_prompts.py` (all `input()` for MA menu + live confirm) and `cli_executor.py` (live SellSignal transmit only).
+- `prompt_ma_assignment` accepts optional `reader=` for tests without patching globals.
+- `--yes-to-all` maps to `confirm_live_transmit(assume_yes=True)` — documented as scripting-only.
+- T005 phase 1: keep `append_trace(record: dict)` API; implement via dedicated `logging` logger + `RotatingFileHandler` (10 MB × 5) writing the same JSON lines as before.
+
+**New information learned:**
+- `_cmd_start` still contains the minute loop, position sync, and snapshot table printing (~300+ lines); splitting those is optional follow-up.
+
+**Problems encountered:**
+- None blocking.
+
+**Completed:**
+- B001 FIXED; T002 DONE; T005 marked DONE for trace rotation (call sites unchanged).
+- `tests/test_cli_prompts.py` (unittest); `python -m unittest discover -s tests` passes with `PYTHONPATH=src`.
+
+**Next steps (S005):**
+1. Optional: extract minute-loop helpers or snapshot table printer from `_cmd_start`.
+2. Optional: structured log levels / console handler for trace events (T005 phase 2).
+3. Add CI step to run `unittest` with `PYTHONPATH=src`.
+
+**Related tasks:** T002, T005  
+**Related bugs:** B001 (FIXED)
+
+---
+
 ## [2026-04-04] — Session #003
 
 **Goal:** Verify B003/B004/B002 implementations from S002; align task detail docs; restore a clean `python -m compileall` on `src/`.

@@ -1,6 +1,6 @@
 # Module API Reference
 
-> **Version:** 1.0 | **Last Updated:** 2026-04-04  
+> **Version:** 1.1 | **Last Updated:** 2026-04-04 (S004)  
 > Covers public-facing functions and classes only. Internal helpers are omitted.
 
 ---
@@ -191,6 +191,42 @@ def place_and_finalize(ib_client, prepared_order: Dict[str, Any], timeout: int =
     """Place an order, wait for fill/cancel/timeout, cancel outstanding, verify.
     When dry_run=True, returns simulated result without placing live order.
     Returns {status, placed_trade, cancelled, positions_before, positions_after, ..., dry_run}."""
+```
+
+---
+
+### `cli_prompts.py`
+
+```python
+MaOption = Tuple[str, int, str]  # ("SMA"|"EMA", length, "1H"|"D")
+
+def build_ma_assignment_options(lengths=..., timeframes=...) -> List[MaOption]:
+def default_ma_selection_index(options, default=("SMA", 50, "1H")) -> int  # 1-based
+def print_ma_assignment_menu(options, default_idx: int) -> None
+def read_ma_selection(options, default_idx: int, *, reader: Callable[[str], str] | None = None) -> MaOption
+def prompt_ma_assignment(ticker: str, *, options=..., reader=...) -> MaOption:
+    """Interactive MA type/length/timeframe; ``reader`` overrides ``input`` for tests."""
+
+def confirm_live_transmit(*, assume_yes: bool = False, reader=...) -> bool:
+    """True if user types YES exactly, or ``assume_yes`` (e.g. CLI ``--yes-to-all``)."""
+```
+
+---
+
+### `cli_executor.py`
+
+```python
+def transmit_live_sell_signals(ib: Any, generated: List[Dict[str, Any]], *, snapshot_ts: str) -> None:
+    """Live path only: place MKT closes for SellSignal rows (intent dedup, qty cap, execute_order)."""
+```
+
+---
+
+### `trace.py`
+
+```python
+def append_trace(record: dict) -> None:
+    """Append one JSON object per line to logs/ibkr_download_trace.log via logging.RotatingFileHandler (10 MB, 5 backups)."""
 ```
 
 ---

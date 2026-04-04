@@ -1,6 +1,6 @@
 # Architecture Overview
 
-> **Version:** 1.0 | **Status:** Current | **Last Updated:** 2026-04-04
+> **Version:** 1.1 | **Status:** Current | **Last Updated:** 2026-04-04 (S004)
 
 ---
 
@@ -10,7 +10,7 @@
 ┌──────────────────────────────────────────────────────────────────────┐
 │                         User Interface Layer                          │
 │    ┌──────────────────────┐      ┌──────────────────────────────┐   │
-│    │    CLI (__main__)    │      │  GUI (main_window / widgets) │   │
+│    │ CLI (__main__ + cli_prompts) │  GUI (main_window / widgets) │   │
 │    └──────────┬───────────┘      └──────────────┬───────────────┘   │
 │               │                                      │                │
 │    ┌──────────▼───────────────────────────────────▼──────────────┐   │
@@ -45,6 +45,7 @@
 │    │                    Order Execution Layer                   │   │
 │    │  orders.py          - Order preparation + dry-run safety   │   │
 │    │  order_manager.py   - Place → wait-fill → cancel → verify  │   │
+│    │  cli_executor.py    - CLI live SellSignal transmit path     │   │
 │    │  intent_store.py    - Idempotency via SHA256 keys          │   │
 │    └───────────────────────────────────────────────────────────┘   │
 └──────────────────────────────────────────────────────────────────────┘
