@@ -84,21 +84,20 @@ def execute_order(ib_client: Any, prepared: PreparedOrder, dry_run: bool = True)
             cur_pos = None
 
         # If we discovered a live position, apply cap/skip logic
-        try:
-            if cur_pos is not None:
-                try:
-                    cur_qty_allowed = int(abs(round(float(cur_pos))))
-                except Exception:
-                    cur_qty_allowed = int(abs(cur_pos)) if cur_pos is not None else 0
-                if cur_qty_allowed <= 0:
-                    logger.info('Transmit skipped: no live position for %s (sig_qty=%s)', prepared.symbol, prepared.quantity)
-                    return {'status': 'skipped_no_position', 'symbol': prepared.symbol, 'position': cur_pos}
-                if prepared.quantity > cur_qty_allowed:
-                    logger.info('Capping qty for %s from %s to %s based on live positions', prepared.symbol, prepared.quantity, cur_qty_allowed)
-                    prepared.quantity = cur_qty_allowed
-                    # reflect in payload if prepared_ib is dict-like
-                    if isinstance(prepared_ib, dict) and 'quantity' in prepared_ib:
-                        prepared_ib['quantity'] = prepared.quantity
+        if cur_pos is not None:
+            try:
+                cur_qty_allowed = int(abs(round(float(cur_pos))))
+            except Exception:
+                cur_qty_allowed = int(abs(cur_pos)) if cur_pos is not None else 0
+            if cur_qty_allowed <= 0:
+                logger.info('Transmit skipped: no live position for %s (sig_qty=%s)', prepared.symbol, prepared.quantity)
+                return {'status': 'skipped_no_position', 'symbol': prepared.symbol, 'position': cur_pos}
+            if prepared.quantity > cur_qty_allowed:
+                logger.info('Capping qty for %s from %s to %s based on live positions', prepared.symbol, prepared.quantity, cur_qty_allowed)
+                prepared.quantity = cur_qty_allowed
+                # reflect in payload if prepared_ib is dict-like
+                if isinstance(prepared_ib, dict) and 'quantity' in prepared_ib:
+                    prepared_ib['quantity'] = prepared.quantity
 
         # transmit: delegate to order_manager for full lifecycle handling
         if prepared_ib:

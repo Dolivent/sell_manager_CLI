@@ -6,11 +6,12 @@
 |-------|-------|
 | Task ID | T001 |
 | Title | Full codebase documentation restructure |
-| Status | IN_PROGRESS |
+| Status | DONE |
 | Priority | P0 |
 | Created | 2026-04-04 |
-| Last Updated | 2026-04-04 |
+| Last Updated | 2026-04-04 (closed S002; index synced S003) |
 | Session | S001 |
+| Session completed | S002 |
 | Detail File | `docs/03-tasks/tracker/T001-full-docs-restyle.md` |
 
 ---

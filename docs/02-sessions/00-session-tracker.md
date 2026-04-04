@@ -41,6 +41,40 @@ At the start of each session, add a new entry:
 
 ---
 
+## [2026-04-04] — Session #003
+
+**Goal:** Verify B003/B004/B002 implementations from S002; align task detail docs; restore a clean `python -m compileall` on `src/`.
+
+**Started:** 12:00 | **Ended:** 12:45 | **Outcome:** SUCCESS
+
+**Context restored from:** Session S002, `docs/04-bugs/00-bug-tracker.md`, T003/T004 task files, `gui/ib_worker.py`, `orders.py`, `minute_snapshot.py`.
+
+**Decisions made:**
+- B003/B004/B002: No code changes required for the original fixes — behaviour already matches S002 descriptions (`_schedule_reconnect`, `place_and_finalize(dry_run=...)`, snapshot phases/dataclasses).
+- Treated two syntax regressions as immediate repair scope: remove orphan `try:` in `orders.py` live path; fix corrupted f-string in `__main__.py` position-matching loop.
+
+**New information learned:**
+- `orders.py` contained a `try:` block (lines 87–101) with no `except`/`finally`, which raises `SyntaxError` and blocks the entire package.
+- `__main__.py` used `f\":{sym}\"` (invalid escape inside f-string), also a hard `SyntaxError`.
+
+**Problems encountered:**
+- Bug tracker marked B002–B010 as FIXED while `src/` did not compile — documentation was ahead of (or diverged from) a broken working tree.
+
+**Completed:**
+- Verified IBWorker `_schedule_reconnect` and poll-error path; verified `order_manager.place_and_finalize` + `execute_order` dry_run wiring; verified `SnapshotRow` / `SnapshotContext` and phased `minute_snapshot` helpers.
+- Fixed syntax errors in `orders.py` and `__main__.py`; `python -m compileall -q src` passes.
+- Synced `docs/03-tasks/tracker/T004-ib-worker-reconnect.md` with DONE status and acceptance criteria (automated tests still absent).
+
+**Next steps (S004):**
+1. B001: Extract `cli_prompts.py` and `cli_executor.py` from `__main__.py` (T002).
+2. Consider adding `pytest` + minimal `IBWorker` reconnect/poll tests (T004 acceptance gap).
+3. Close out T001 documentation task index if all deliverables exist.
+
+**Related tasks:** T002, T003, T004, T001  
+**Related bugs:** B001 (OPEN), B002–B010 (FIXED); S003 syntax repairs tied to B004 / `__main__` live path
+
+---
+
 ## [2026-04-04] — Session #002
 
 **Goal:** Fix B003 (IBWorker re-entrant queue), B004 (dry_run inconsistency), B002 (break up minute_snapshot.py), B006 (symbol normalisation), B005/B007 (use_rth), B008/B009/B010 (gitignore/clean_export); update all documentation

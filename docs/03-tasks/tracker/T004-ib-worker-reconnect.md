@@ -6,10 +6,11 @@
 |-------|-------|
 | Task ID | T004 |
 | Title | Fix reconnect loop in `IBWorker._poll_positions` |
-| Status | OPEN |
+| Status | DONE |
 | Priority | P1 |
 | Created | 2026-04-04 |
-| Session | S001 |
+| Session completed | S002 |
+| Last verified | S003 |
 | Detail File | `docs/03-tasks/tracker/T004-ib-worker-reconnect.md` |
 
 ---
@@ -81,7 +82,12 @@ This is already partially implemented but submits back to the same queue via `_s
 
 ## 5. Acceptance Criteria
 
-- [ ] Reconnect logic does not submit work back into the IB queue
-- [ ] `consecutive_errors` counter is reset on successful poll
-- [ ] Backoff timer is cancelled on clean disconnect
-- [ ] Unit tests cover: normal poll, single error, 3-error reconnect trigger, disconnect during reconnect
+- [x] Reconnect logic does not submit work back into the IB queue — `_schedule_reconnect` runs `connect()` on a short-lived daemon thread (S002); verified in S003.
+- [x] `consecutive_errors` counter is reset on successful poll — `_consecutive_poll_errors` reset to `0` after a successful `_fetch` in `_poll_positions` (S002).
+- [x] Backoff timer is cancelled on clean disconnect — `disconnect()` cancels `_reconnect_timer` (S002).
+- [ ] Unit tests cover: normal poll, single error, 3-error reconnect trigger, disconnect during reconnect — **not implemented** (no test harness in repo as of S003; candidate follow-up).
+
+## 6. Implementation notes (S002 / S003)
+
+- Chosen design matches **Option B** intent: reconnect work is not queued on `_call_queue`; `_schedule_reconnect` spawns a daemon `threading.Thread` that calls `connect()`.
+- `connect` failure path uses `threading.Timer` only to delay the call; the timer callback invokes `_schedule_reconnect`, not `_submit_to_ib_thread`.

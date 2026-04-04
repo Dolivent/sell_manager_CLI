@@ -496,7 +496,7 @@ def _cmd_start(args: argparse.Namespace) -> None:
                                                                 sym = getattr(contract, 'symbol', None) or getattr(contract, 'localSymbol', None)
                                                                 exchange = getattr(contract, 'exchange', None) or ''
                                                                 token_full = f"{exchange}:{sym}" if exchange else sym
-                                                                if token_full and (ticker.endswith(f\":{sym}\") or ticker.endswith(sym) or token_full == ticker):
+                                                                if token_full and (ticker.endswith(f":{sym}") or ticker.endswith(sym) or token_full == ticker):
                                                                     cur_pos_val = getattr(p, 'position', None) or getattr(p, 'pos', None) or 0
                                                                     break
                                                             except Exception:

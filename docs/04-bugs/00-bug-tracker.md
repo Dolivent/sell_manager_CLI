@@ -204,7 +204,7 @@ Add a new entry for every bug, regression, or design problem you encounter or id
 **Status:** FIXED  
 **Component:** `orders.py`, `order_manager.py`  
 **Discovered:** 2026-04-04 (session S001)  
-**Last Updated:** 2026-04-04 (session S002)
+**Last Updated:** 2026-04-04 (session S003)
 
 **Summary:** `orders.py`'s `execute_order` accepts `dry_run: bool = True` and checks it at multiple points. `order_manager.py`'s `place_and_finalize` had no `dry_run` parameter — it always attempted live transmission. If `order_manager.place_and_finalize` was called directly, no dry-run protection existed.
 
@@ -222,8 +222,9 @@ Add a new entry for every bug, regression, or design problem you encounter or id
 - Added `dry_run: bool = False` parameter to `order_manager.place_and_finalize`. When `True`, returns a simulated result dict without placing any live order.
 - Updated `orders.execute_order` to pass `dry_run=dry_run` to `order_manager.place_and_finalize`.
 - Added `'dry_run': False` to the live path result dict.
+- **S003:** Repaired a syntax regression in `orders.py` (orphan `try:` without `except`/`finally` around the live position cap block) that prevented the module from loading.
 
-**Session fixed:** S002
+**Session fixed:** S002 (logic); S003 (syntax regression)
 
 **Related tasks:** T001  
 **Related sessions:** S001, S002
@@ -300,7 +301,7 @@ Add a new entry for every bug, regression, or design problem you encounter or id
 **Status:** OPEN  
 **Component:** `__main__.py`  
 **Discovered:** 2026-04-04 (S001)  
-**Last Updated:** 2026-04-04
+**Last Updated:** 2026-04-04 (S003)
 
 **Summary:** `_cmd_start` in `__main__.py` is approximately 400 lines. It mixes IB connection logic, live position fetching, assignment CSV management, interactive assignment prompts, minute loop scheduling, snapshot execution, signal generation, order preparation, order execution, and terminal output formatting — all in one function.
 
@@ -316,5 +317,7 @@ Add a new entry for every bug, regression, or design problem you encounter or id
 
 **Fix / Workaround:** Extract interactive assignment prompts into `cli_prompts.py`. Extract order execution logic into a `cli_executor.py`. Keep `_cmd_start` as the orchestration layer.
 
+**Note (S003):** A corrupted f-string in the live-order position cap loop (`f\":{sym}\"`) was repaired; it was a SyntaxError unrelated to the structural refactor but blocked running the CLI.
+
 **Related tasks:** T002 (dedicated task for this)  
-**Related sessions:** S001
+**Related sessions:** S001, S003
