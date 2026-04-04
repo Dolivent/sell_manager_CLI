@@ -41,6 +41,82 @@ At the start of each session, add a new entry:
 
 ---
 
+## [2026-04-04] — Session #008
+
+**Goal:** Implement T016 from product backlog — configurable `ibkr_download_trace.log` rotation via environment variables; update docs and trackers.
+
+**Started:** — | **Ended:** — | **Outcome:** SUCCESS
+
+**Context restored from:** T015 seed list (“configurable rotation policy per log file”); session S007 next-step guidance.
+
+**Decisions made:**
+- Use decimal megabytes (1 MB = 1_000_000 bytes) so default remains 10_000_000 bytes.
+- Clamp MB and backup count to bounded ranges; invalid env strings fall back to defaults.
+
+**Completed:**
+- `trace._trace_rotation_settings()` + extended `tests/test_trace.py`.
+- Runbook §2a.1, module API, reference index; fixed reference-index audit table (order intents row + GUI smoke section).
+- Trackers: T016 DONE; T015 “spawned tasks”; task index updated.
+
+**Next steps:** Pick another T015 item for T017 (alerts, dashboard, multi-account, etc.); optional dev lint pass (`ruff`) remains a separate cleanup.
+
+**Related tasks:** T016 (DONE), T015 (OPEN)  
+**Related bugs:** —
+
+---
+
+## [2026-04-04] — Session #007
+
+**Goal:** Complete backlog T007–T014 (logging phase 2, CLI loop extraction, tests, runbook, GUI smoke, CI hardening); leave T015 as open product bucket.
+
+**Started:** — | **Ended:** — | **Outcome:** SUCCESS
+
+**Context restored from:** User request to “do all”; prior task definitions T007–T015.
+
+**Decisions made:**
+- Introduce `log_config.py` + `cli_loop.py`; keep `_cmd_start` as orchestration shell.
+- CI installs `[gui]` for IBWorker tests; `QT_QPA_PLATFORM=offscreen`; Linux apt Qt libs; run `pytest` after `unittest`.
+- `heartbeat_cycle` accepts optional `now_fn` for unit tests (avoid patching `datetime.now` on the class).
+
+**Completed:**
+- T007–T014 DONE; T015 OPEN with seed ideas in tracker.
+- **IBWorker:** fixed reconnect timer lambda (`host,port,client_id` vs broken `h,p,cid`).
+- New tests: `test_cli_loop`, `test_trace`, `test_cli_executor`, `test_ib_worker`; `tests/test_cli_loop.py` covers heartbeat/sort/signals batch.
+- Docs: runbook §2a.1, `02-gui-smoke.md`, module API, task trackers, T004 acceptance update.
+
+**Next steps:** Pick an item from T015 and open T016; optional `ruff`/`mypy` in `dev`.
+
+**Related tasks:** T007–T014 (DONE), T015 (OPEN)  
+**Related bugs:** — (timer fix noted under T009)
+
+---
+
+## [2026-04-04] — Session #006
+
+**Goal:** Register backlog tasks T006–T015 in docs; implement CI; add `dev` optional dependency; update runbook.
+
+**Started:** — | **Ended:** — | **Outcome:** SUCCESS
+
+**Context restored from:** User request to update docs and continue; prior informal backlog list.
+
+**Decisions made:**
+- Formalised **T006–T015** with tracker files under `docs/03-tasks/tracker/`.
+- **T006** = GitHub Actions CI (Python 3.10–3.12, compileall + unittest); no IB in CI.
+- **`dev`** optional extra in `pyproject.toml` includes `pytest` (T012 partial; migration still OPEN).
+
+**Completed:**
+- `.github/workflows/ci.yml`
+- Tracker files T006–T015; `00-task-tracker.md` backlog table + detail stubs
+- Runbook §0 CI; session log
+- **Packaging fix:** moved `requires-python` under `[project]` (it had been parsed as `[project.scripts]` and broke `pip install -e .` on newer setuptools).
+
+**Next steps:** T007 (logging phase 2) or T008 (`_cmd_start` splits) or T009 (IBWorker tests).
+
+**Related tasks:** T006 (DONE), T007–T015 (OPEN)  
+**Related bugs:** —
+
+---
+
 ## [2026-04-04] — Session #005
 
 **Goal:** Re-run automated tests and verify IB Gateway connectivity after the user enabled TWS/Gateway.

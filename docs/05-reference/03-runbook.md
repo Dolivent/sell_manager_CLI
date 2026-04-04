@@ -1,6 +1,26 @@
 # Operational Runbook
 
-> **Version:** 1.0 | **Last Updated:** 2026-04-04
+> **Version:** 1.1 | **Last Updated:** 2026-04-04 (S006)
+
+---
+
+## 0. Automated checks (CI)
+
+On GitHub, **CI** runs on pushes and pull requests to `main` / `master`:
+
+1. `pip install -e .` (no GUI extras)
+2. `python -m compileall -q src`
+3. `python -m unittest discover -s tests -v`
+
+Locally (same as CI):
+
+```bash
+pip install -e .
+python -m compileall -q src
+python -m unittest discover -s tests -v
+```
+
+Optional dev tools: `pip install -e ".[dev]"` (includes `pytest` for future/ad-hoc use).
 
 ---
 
@@ -66,7 +86,16 @@ python -m sellmanagement --no-rth
 
 # Custom IB client ID (use different ID for each concurrent connection)
 python -m sellmanagement --client-id 2
+
+# Scripted live (skips interactive YES — use only if you accept full auto-send risk)
+python -m sellmanagement start --live --yes-to-all
 ```
+
+### 2a.1 Client IDs, Gateway, and trace logs
+
+- **One client ID per API session.** If the CLI is running, do not use the same client ID in TWS/API unless you intend to disconnect the other.
+- **Gateway must be running** before `python -m sellmanagement`; otherwise connection fails immediately with no live data.
+- **Trace file:** `logs/ibkr_download_trace.log` — JSON lines, **rotating** (default **10 MB**, **5** backups; each “MB” is 1,000,000 bytes). Override before launch: `SELLMANAGEMENT_TRACE_MAX_MB` (float, clamped 0.1–1024) and `SELLMANAGEMENT_TRACE_BACKUPS` (integer, clamped 0–100; `0` = no rotated files kept). Same events as before; failures writing the trace also emit a **WARNING** on stderr when logging is configured.
 
 ### 2b. GUI Mode
 

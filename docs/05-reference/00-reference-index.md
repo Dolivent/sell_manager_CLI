@@ -57,5 +57,9 @@ A `SellSignal` is generated when **all** of the following are true:
 |-----|------|--------|
 | Signal decisions | `logs/signals.jsonl` | JSONL |
 | Minute snapshots | `logs/minute_snapshot.jsonl` | JSONL |
-| Trace events | `logs/ibkr_download_trace.log` | JSONL |
+| Trace events | `logs/ibkr_download_trace.log` | JSONL (rotating; default 10 MB × 5; see runbook §2a.1 for env overrides) |
 | Order intents | `logs/intents.jsonl` | JSONL |
+
+### GUI smoke test
+
+See [`../06-user-guide/02-gui-smoke.md`](../06-user-guide/02-gui-smoke.md).

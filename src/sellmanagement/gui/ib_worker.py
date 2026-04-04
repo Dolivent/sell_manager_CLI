@@ -67,7 +67,12 @@ class IBWorker(QObject):
                             self._reconnect_timer.cancel()
                         except Exception:
                             pass
-                    self._reconnect_timer = threading.Timer(backoff, lambda: self._schedule_reconnect(host=h, port=p, client_id=cid, use_rth=use_rth))
+                    self._reconnect_timer = threading.Timer(
+                        backoff,
+                        lambda: self._schedule_reconnect(
+                            host=host, port=port, client_id=client_id, use_rth=use_rth
+                        ),
+                    )
                     self._reconnect_timer.daemon = True
                     self._reconnect_timer.start()
                     self._backoff_seconds = min(self._backoff_seconds * 2, self._max_backoff)

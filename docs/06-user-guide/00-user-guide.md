@@ -1,8 +1,12 @@
 # User Guide
 
-> **Version:** 1.0 | **Last Updated:** 2026-04-04
+> **Version:** 1.1 | **Last Updated:** 2026-04-04 (S007)
 
 ---
+
+## Related
+
+- [GUI smoke checklist](02-gui-smoke.md) — quick manual regression after changes.
 
 ## Table of Contents
 

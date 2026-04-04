@@ -3,7 +3,11 @@ from qtpy import QtWidgets
 from .main_window import MainWindow
 import sys
 
+from ..log_config import setup_logging
+
+
 def main():
+    setup_logging()
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication(sys.argv)
     mw = MainWindow()
     mw.show()

@@ -25,9 +25,25 @@
 
 ---
 
+## Backlog Summary (T006–T016)
+
+| ID | Title | Status | Priority | Detail |
+|----|-------|--------|----------|--------|
+| T006 | CI pipeline | DONE | P2 | [T006](tracker/T006-ci-pipeline.md) |
+| T007 | Logging phase 2 (console + module loggers) | DONE | P2 | [T007](tracker/T007-logging-phase2.md) |
+| T008 | Further `_cmd_start` decomposition | DONE | P2 | [T008](tracker/T008-cmd-start-splits.md) |
+| T009 | IBWorker unit tests | DONE | P2 | [T009](tracker/T009-ibworker-tests.md) |
+| T010 | Trace / `append_trace` tests | DONE | P3 | [T010](tracker/T010-trace-tests.md) |
+| T011 | `cli_executor` unit tests | DONE | P3 | [T011](tracker/T011-cli-executor-tests.md) |
+| T012 | Pytest + dev tooling | DONE | P3 | [T012](tracker/T012-pytest-dev.md) |
+| T013 | Runbook / ops hardening | DONE | P3 | [T013](tracker/T013-runbook-ops.md) |
+| T014 | GUI smoke checklist | DONE | P3 | [T014](tracker/T014-gui-smoke.md) |
+| T015 | Product backlog bucket | OPEN | P3 | [T015](tracker/T015-product-backlog.md) — living list of future features |
+| T016 | Trace rotation via env (`SELLMANAGEMENT_TRACE_*`) | DONE | P3 | [T016](tracker/T016-trace-rotation-env.md) — from T015 |
+
 ## Active Tasks
 
-*No tasks in OPEN / IN_PROGRESS. Optional follow-ups: console logging (T005 phase 2), further `_cmd_start` splits.*
+**T015** remains an **OPEN** parking lot for unprioritised product ideas (see tracker file). **T016** (trace rotation env) is **DONE** (session S008). T006–T014 remain **DONE** (session S007).
 
 ---
 
@@ -132,6 +148,68 @@ Replace the `trace.py` append-only approach with Python's `logging` module (with
 
 ---
 
+### T006 — CI pipeline
+
+**Status:** DONE  
+**Priority:** P2  
+**Session completed:** S006  
+**Detail file:** [`docs/03-tasks/tracker/T006-ci-pipeline.md`](tracker/T006-ci-pipeline.md)
+
+**Summary:** GitHub Actions: `pip install -e ".[gui]"`, `compileall`, `unittest`, then `pytest` + `QT_QPA_PLATFORM=offscreen`. Matrix Python 3.10–3.12.
+
+---
+
+### T007 — Logging phase 2
+
+**Status:** DONE | **Session:** S007 | **Detail:** [`T007-logging-phase2.md`](tracker/T007-logging-phase2.md)  
+**Resolution:** `log_config.setup_logging()` on CLI + GUI entry; stderr WARNING+ for `sellmanagement.*`; `downloader` logs backfill errors; `append_trace` logs failures at WARNING.
+
+### T008 — Further `_cmd_start` splits
+
+**Status:** DONE | **Session:** S007 | **Detail:** [`T008-cmd-start-splits.md`](tracker/T008-cmd-start-splits.md)  
+**Resolution:** `cli_loop.py` — minute sleep, heartbeat/gap, signal batch preview, snapshot sort/print.
+
+### T009 — IBWorker tests
+
+**Status:** DONE | **Session:** S007 | **Detail:** [`T009-ibworker-tests.md`](tracker/T009-ibworker-tests.md)  
+**Resolution:** `tests/test_ib_worker.py` (reconnect after 3 errors, counter reset). **Bugfix:** `IBWorker.connect` reconnect timer used undefined `h,p,cid` → fixed to `host,port,client_id`.
+
+### T010 — Trace tests
+
+**Status:** DONE | **Session:** S007 | **Detail:** [`T010-trace-tests.md`](tracker/T010-trace-tests.md)  
+**Resolution:** `tests/test_trace.py` with temp log path and handler cleanup (Windows-safe).
+
+### T011 — `cli_executor` tests
+
+**Status:** DONE | **Session:** S007 | **Detail:** [`T011-cli-executor-tests.md`](tracker/T011-cli-executor-tests.md)  
+**Resolution:** `tests/test_cli_executor.py`.
+
+### T012 — Pytest / dev tooling
+
+**Status:** DONE | **Session:** S007 | **Detail:** [`T012-pytest-dev.md`](tracker/T012-pytest-dev.md)  
+**Resolution:** CI runs `pytest tests -q` after `unittest`.
+
+### T013 — Runbook ops
+
+**Status:** DONE | **Session:** S007 | **Detail:** [`T013-runbook-ops.md`](tracker/T013-runbook-ops.md)  
+**Resolution:** Runbook §2a.1 client IDs, `--yes-to-all`, trace rotation, Gateway readiness.
+
+### T014 — GUI smoke
+
+**Status:** DONE | **Session:** S007 | **Detail:** [`T014-gui-smoke.md`](tracker/T014-gui-smoke.md)  
+**Resolution:** `docs/06-user-guide/02-gui-smoke.md` checklist.
+
+### T015 — Product backlog
+
+**Status:** OPEN | **Priority:** P3 | **Detail:** [`T015-product-backlog.md`](tracker/T015-product-backlog.md)
+
+### T016 — Trace log rotation (environment)
+
+**Status:** DONE | **Session:** S008 | **Detail:** [`T016-trace-rotation-env.md`](tracker/T016-trace-rotation-env.md)  
+**Resolution:** `SELLMANAGEMENT_TRACE_MAX_MB`, `SELLMANAGEMENT_TRACE_BACKUPS`; runbook + API + tests.
+
+---
+
 ## Completed Tasks
 
 | ID | Title | Status | Completed |
@@ -141,6 +219,16 @@ Replace the `trace.py` append-only approach with Python's `logging` module (with
 | T003 | Extract snapshot logic from `minute_snapshot.py` | DONE | S002 |
 | T004 | Reconnect loop in `ib_worker.py` | DONE | S002 |
 | T005 | Proper logging instead of `trace.py` (phase 1) | DONE | S004 |
+| T006 | CI pipeline | DONE | S006 |
+| T007 | Logging phase 2 | DONE | S007 |
+| T008 | `_cmd_start` / CLI loop splits | DONE | S007 |
+| T009 | IBWorker unit tests | DONE | S007 |
+| T010 | Trace tests | DONE | S007 |
+| T011 | cli_executor tests | DONE | S007 |
+| T012 | Pytest in CI | DONE | S007 |
+| T013 | Runbook ops | DONE | S007 |
+| T014 | GUI smoke doc | DONE | S007 |
+| T016 | Trace rotation env vars | DONE | S008 |
 
 ---
 

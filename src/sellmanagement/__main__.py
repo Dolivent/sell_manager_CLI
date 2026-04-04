@@ -2,14 +2,25 @@ from .config import Config
 from .ib_client import IBClient
 from .assign import set_assignment, get_assignments_list, sync_assignments_to_positions
 from .cli_executor import transmit_live_sell_signals
+from .cli_loop import (
+    heartbeat_cycle,
+    print_last_signals_preview,
+    print_snapshot_table,
+    sleep_until_next_minute_ny,
+    sort_snapshot_rows_for_display,
+)
 from .cli_prompts import confirm_live_transmit, prompt_ma_assignment
 from .downloader import batch_download_daily, persist_batch_halfhours
 from .cache import merge_bars
-from datetime import datetime, timedelta
+from datetime import datetime
+from .log_config import setup_logging
 from .minute_snapshot import run_minute_snapshot
-import os
 import argparse
+import logging
+from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 def _cmd_start(args: argparse.Namespace) -> None:
@@ -43,54 +54,8 @@ def _cmd_start(args: argparse.Namespace) -> None:
         print(f"Assigned MA CSV: {ASSIGNED_CSV.resolve()}")
         print(f"Signals log: {_signals_log_path().resolve()}")
 
-        # show last batch of signals (most-recent group by second) for quick startup visibility
         try:
-            import json
-            from pathlib import Path
-            # reuse datetime already imported above; alias locally to avoid shadowing
-            from datetime import datetime as _dt
-
-            def _read_last_signal_batch(log_path: Path):
-                if not log_path.exists():
-                    return []
-                groups = {}
-                last_key = None
-                with log_path.open("r", encoding="utf-8") as fh:
-                    for line in fh:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        try:
-                            obj = json.loads(line)
-                        except Exception:
-                            continue
-                        ts = obj.get("ts")
-                        if not ts:
-                            continue
-                        try:
-                            dt = _dt.fromisoformat(ts)
-                            key = dt.replace(microsecond=0).isoformat()
-                        except Exception:
-                            key = ts.split(".")[0] if "." in ts else ts
-                        groups.setdefault(key, []).append(obj)
-                        last_key = key
-                if not last_key:
-                    return []
-                return groups.get(last_key, [])
-
-            try:
-                lp = Path(_signals_log_path().resolve())
-                last_batch = _read_last_signal_batch(lp)
-                if last_batch:
-                    print("\nLast signals (most recent batch):")
-                    for s in last_batch:
-                        try:
-                            print(f"{s.get('ticker', '<unknown>'):20} -> {s.get('decision', '<undecided>')}")
-                        except Exception:
-                            continue
-            except Exception:
-                # best-effort display; do not interrupt startup on failure
-                pass
+            print_last_signals_preview(Path(_signals_log_path().resolve()))
         except Exception:
             pass
     except Exception:
@@ -220,55 +185,25 @@ def _cmd_start(args: argparse.Namespace) -> None:
     # Start a continuous minute-aligned loop: run snapshot at top of every minute
     try:
         print("Entering minute snapshot loop. Press Ctrl+C to stop.")
-        import time
         from .trace import append_trace
+        from zoneinfo import ZoneInfo
 
-        # Heartbeat/gap-detection: remember last wake time and detect large gaps
-        # to handle sleep/screensaver/wake events. We log a regular heartbeat each
-        # minute and a special "woke_late" event if we detect we've been paused.
         last_wake = None
         heartbeat_interval = 60.0
 
         while True:
-            # wait until next top of minute (use America/New_York timezone)
-            from zoneinfo import ZoneInfo
-            now = datetime.now(tz=ZoneInfo('America/New_York'))
-            # compute next minute boundary
-            next_min = (now.replace(second=0, microsecond=0) + timedelta(minutes=1))
-            # special-case: if next minute is 16:00 (4pm NY), wake 5 seconds earlier
-            if next_min.hour == 16 and next_min.minute == 0:
-                seconds_till_next = (next_min - now).total_seconds() - 5.0
-            else:
-                seconds_till_next = (next_min - now).total_seconds()
-            if seconds_till_next < 0.1:
-                seconds_till_next = 0.1
+            sleep_until_next_minute_ny()
+            last_wake = heartbeat_cycle(
+                last_wake, append_trace, heartbeat_interval=heartbeat_interval
+            )
 
-            # Sleep in small chunks so Ctrl+C is responsive
-            slept = 0.0
-            chunk = min(5.0, seconds_till_next)
-            while slept + 0.0001 < seconds_till_next:
-                to_sleep = min(chunk, seconds_till_next - slept)
-                time.sleep(to_sleep)
-                slept += to_sleep
-
-            # detect wake/gap: compare wall-clock now to last_wake
-            woke_at = datetime.now(tz=ZoneInfo('America/New_York'))
-            if last_wake is None:
-                last_wake = woke_at
-            else:
-                gap = (woke_at - last_wake).total_seconds()
-                # If gap is significantly larger than heartbeat interval, we likely
-                # resumed from sleep/screensaver. Log a special event with gap info.
-                if gap > (heartbeat_interval * 1.5):
-                    try:
-                        append_trace({"event": "woke_late", "gap_seconds": gap, "reason": "suspiciously_large_gap"})
-                    except Exception:
-                        pass
-                last_wake = woke_at
-
-            # Emit a heartbeat trace so external monitors know process is alive
             try:
-                append_trace({"event": "heartbeat", "ts": datetime.now(tz=ZoneInfo('America/New_York')).isoformat()})
+                append_trace(
+                    {
+                        "event": "heartbeat",
+                        "ts": datetime.now(tz=ZoneInfo("America/New_York")).isoformat(),
+                    }
+                )
             except Exception:
                 pass
 
@@ -383,69 +318,12 @@ def _cmd_start(args: argparse.Namespace) -> None:
                         append_trace({"event": "signal_evaluation_failed", "error": str(e)})
                     except Exception:
                         pass
-                # formatted table: aligned columns
-                # show rows with abv_be True first
-                try:
-                    # sort by abv_be (True first) then by distance_pct ascending within each group
-                    def _sort_key(r):
-                        # not bool(abv_be) -> False for True, True for False so True rows come first
-                        abv_key = not bool(r.get('abv_be'))
-                        # distance may be None; treat None as +inf so it sorts after numeric values
-                        dist = r.get('distance_pct')
-                        try:
-                            dist_key = float(dist) if dist is not None else float('inf')
-                        except Exception:
-                            dist_key = float('inf')
-                        return (abv_key, dist_key)
-
-                    rows = sorted(rows, key=_sort_key)
-                except Exception:
-                    pass
-                hdr = f"{'ticker':20}{'last_close':>12}{'ma_value':>12}{'distance_pct':>14}  {'assigned_ma':>18}{'abv_be':>8}"
-                print(hdr)
-                for r in rows:
-                    tk = r.get('ticker') or ''
-                    last_close = r.get('last_close')
-                    ma_value = r.get('ma_value')
-                    distance = r.get('distance_pct')
-
-                    if last_close is None:
-                        last_s = '-' 
-                    else:
-                        try:
-                            last_s = f"{float(last_close):.2f}"
-                        except Exception:
-                            last_s = str(last_close)
-
-                    if ma_value is None:
-                        ma_s = '-'
-                    else:
-                        try:
-                            ma_s = f"{float(ma_value):.2f}"
-                        except Exception:
-                            ma_s = str(ma_value)
-
-                    if distance is None:
-                        dist_s = '-'
-                    else:
-                        try:
-                            dist_s = f"{float(distance):.1f}%"
-                        except Exception:
-                            dist_s = str(distance)
-
-                    am = r.get('assigned_ma') or '-'
-                    tf = r.get('assigned_timeframe') or '-'
-                    # move timeframe in front of assigned_ma and drop separate tf column
-                    assigned_display = f"{tf} {am}" if am and tf else (am or '-')
-                    abv_be_val = r.get('abv_be')
-                    if abv_be_val is None:
-                        abv_s = '-'
-                    else:
-                        abv_s = 'T' if bool(abv_be_val) else 'F'
-                    print(f"{tk:20}{last_s:>12}{ma_s:>12}{dist_s:>14}  {assigned_display:>18}{abv_s:>8}")
+                rows = sort_snapshot_rows_for_display(rows)
+                print_snapshot_table(rows)
             except KeyboardInterrupt:
                 raise
             except Exception as e:
+                logger.exception("Minute snapshot iteration failed: %s", e)
                 print(f"Minute snapshot failed: {e}")
     except KeyboardInterrupt:
         print("Shutting down...")
@@ -490,6 +368,7 @@ def main(argv: Optional[list] = None) -> None:
     p_assign.add_argument("--timeframe", default="1H", help="Timeframe for MA (e.g. 1H or D). Default: 1H")
 
     args = parser.parse_args(argv)
+    setup_logging()
 
     # Default to start when no command provided
     cmd = args.command or "start"

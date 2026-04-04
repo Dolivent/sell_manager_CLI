@@ -146,6 +146,10 @@ Append-only trace log for download, sync, and error events.
 **Written by:** `trace.py::append_trace()`  
 **Read by:** `main_window.py` (GUI trace tailing)
 
+### Rotation
+
+File rotation uses `logging.handlers.RotatingFileHandler`. Defaults and optional environment overrides (`SELLMANAGEMENT_TRACE_MAX_MB`, `SELLMANAGEMENT_TRACE_BACKUPS`) are documented in the runbook (§2a.1).
+
 ### Record Format
 
 ```json

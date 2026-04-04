@@ -1,6 +1,6 @@
 # Module API Reference
 
-> **Version:** 1.1 | **Last Updated:** 2026-04-04 (S004)  
+> **Version:** 1.2 | **Last Updated:** 2026-04-04 (S007)  
 > Covers public-facing functions and classes only. Internal helpers are omitted.
 
 ---
@@ -225,8 +225,40 @@ def transmit_live_sell_signals(ib: Any, generated: List[Dict[str, Any]], *, snap
 ### `trace.py`
 
 ```python
+def _trace_rotation_settings() -> tuple[int, int]:
+    """Return (maxBytes, backupCount) for the trace RotatingFileHandler.
+
+    Env: SELLMANAGEMENT_TRACE_MAX_MB (decimal MB = 1e6 bytes per unit, default 10),
+    SELLMANAGEMENT_TRACE_BACKUPS (default 5). Invalid values use defaults; results clamped.
+    """
+
 def append_trace(record: dict) -> None:
-    """Append one JSON object per line to logs/ibkr_download_trace.log via logging.RotatingFileHandler (10 MB, 5 backups)."""
+    """Append one JSON object per line to logs/ibkr_download_trace.log via RotatingFileHandler.
+
+    Rotation uses _trace_rotation_settings() (defaults 10 MB, 5 backups).
+    """
+```
+
+---
+
+### `log_config.py`
+
+```python
+def setup_logging(console_level: int = logging.WARNING) -> None:
+    """Attach stderr StreamHandler to the ``sellmanagement`` logger (idempotent). CLI + GUI call this at startup."""
+```
+
+---
+
+### `cli_loop.py`
+
+```python
+def read_last_signal_batch(log_path: Path) -> List[Dict[str, Any]]
+def print_last_signals_preview(log_path: Path) -> None
+def sleep_until_next_minute_ny(*, max_chunk_seconds: float = 5.0, time_sleep=...) -> None
+def heartbeat_cycle(last_wake, append_trace, *, heartbeat_interval: float = 60.0, now_fn: Callable[[], datetime] | None = None) -> datetime
+def sort_snapshot_rows_for_display(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]
+def print_snapshot_table(rows: List[Dict[str, Any]]) -> None
 ```
 
 ---

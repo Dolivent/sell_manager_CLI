@@ -3,8 +3,11 @@
 Implements batch daily downloads (concurrent batches of N with pause between).
 """
 from typing import Iterable, List, Dict
+import logging
 import time
 from .trace import append_trace
+
+logger = logging.getLogger(__name__)
 from .cache import write_bars, merge_bars, load_bars
 from .aggregation import aggregate_halfhours_to_hours
 
@@ -43,6 +46,7 @@ def _sequential_backfill_halfhours(ib_client, token: str, batch_durations: List[
             append_trace({"event": "backfill_request_done", "token": token, "count": len(res), "attempt": attempts})
         except Exception as e:
             append_trace({"event": "backfill_request_error", "token": token, "error": str(e), "attempt": attempts})
+            logger.warning("Halfhour backfill request failed for %s: %s", token, e)
             break
 
         if not res:

@@ -85,7 +85,7 @@ This is already partially implemented but submits back to the same queue via `_s
 - [x] Reconnect logic does not submit work back into the IB queue — `_schedule_reconnect` runs `connect()` on a short-lived daemon thread (S002); verified in S003.
 - [x] `consecutive_errors` counter is reset on successful poll — `_consecutive_poll_errors` reset to `0` after a successful `_fetch` in `_poll_positions` (S002).
 - [x] Backoff timer is cancelled on clean disconnect — `disconnect()` cancels `_reconnect_timer` (S002).
-- [ ] Unit tests cover: normal poll, single error, 3-error reconnect trigger, disconnect during reconnect — **not implemented** (no test harness in repo as of S003; candidate follow-up).
+- [x] Unit tests: 3-error reconnect trigger + error counter reset — `tests/test_ib_worker.py` (S007). Disconnect-during-reconnect remains optional coverage.
 
 ## 6. Implementation notes (S002 / S003)
 
