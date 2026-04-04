@@ -41,6 +41,31 @@ At the start of each session, add a new entry:
 
 ---
 
+## [2026-04-04] — Session #009
+
+**Goal:** Implement T017 from T015 — SMTP email alerts on `SellSignal` and on failed live order transmit; update docs and trackers.
+
+**Started:** — | **Ended:** — | **Outcome:** SUCCESS
+
+**Context restored from:** T015 seed list (item 1); session S008 next steps.
+
+**Decisions made:**
+- Scope **email/SMTP only** (no Telegram/push in this task); stdlib `smtplib` + `EmailMessage`.
+- Failure alerts for live transmit when `execute_order` / lifecycle `status` is `failed_prepare`, `failed_transmit`, `timeout`, `error`, or `cancelled`; plus exception path in `transmit_live_sell_signals`.
+- Port **465** uses `SMTP_SSL`; other ports use `STARTTLS` when offered.
+- SMTP auth optional: if `SELLMANAGEMENT_SMTP_USER` is set, `SELLMANAGEMENT_SMTP_PASS` must be present in the environment (value may be empty).
+
+**Completed:**
+- `alerts.py`, hooks in `signals.py` / `cli_executor.py`, `tests/test_alerts.py`.
+- Runbook §2a.2, module API; T017 tracker DONE; T015 spawned row; task index.
+
+**Next steps:** T018 (Flask dashboard from T015 item 2); then multi-account GUI, MA presets, broker abstraction per backlog.
+
+**Related tasks:** T017 (DONE), T015 (OPEN)  
+**Related bugs:** —
+
+---
+
 ## [2026-04-04] — Session #008
 
 **Goal:** Implement T016 from product backlog — configurable `ibkr_download_trace.log` rotation via environment variables; update docs and trackers.

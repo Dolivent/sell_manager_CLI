@@ -1,6 +1,6 @@
 # Operational Runbook
 
-> **Version:** 1.1 | **Last Updated:** 2026-04-04 (S006)
+> **Version:** 1.2 | **Last Updated:** 2026-04-04 (S009)
 
 ---
 
@@ -96,6 +96,23 @@ python -m sellmanagement start --live --yes-to-all
 - **One client ID per API session.** If the CLI is running, do not use the same client ID in TWS/API unless you intend to disconnect the other.
 - **Gateway must be running** before `python -m sellmanagement`; otherwise connection fails immediately with no live data.
 - **Trace file:** `logs/ibkr_download_trace.log` — JSON lines, **rotating** (default **10 MB**, **5** backups; each “MB” is 1,000,000 bytes). Override before launch: `SELLMANAGEMENT_TRACE_MAX_MB` (float, clamped 0.1–1024) and `SELLMANAGEMENT_TRACE_BACKUPS` (integer, clamped 0–100; `0` = no rotated files kept). Same events as before; failures writing the trace also emit a **WARNING** on stderr when logging is configured.
+
+### 2a.2 Optional SMTP alerts (SellSignal + failed live orders)
+
+Set the following **before** starting the CLI (or GUI) process:
+
+| Variable | Required | Notes |
+|----------|----------|--------|
+| `SELLMANAGEMENT_SMTP_HOST` | Yes | SMTP server hostname |
+| `SELLMANAGEMENT_ALERT_TO` | Yes | Recipient address |
+| `SELLMANAGEMENT_SMTP_PORT` | No | Default **587** (`STARTTLS` when supported); use **465** for implicit TLS (`SMTP_SSL`) |
+| `SELLMANAGEMENT_SMTP_USER` | No | If set, `SELLMANAGEMENT_SMTP_PASS` must also be set in the environment (may be empty) |
+| `SELLMANAGEMENT_SMTP_PASS` | With user | App password or secret |
+
+If host or recipient is missing (or user/password pairing is invalid), the app logs **one** WARNING per process and skips email. When configured, emails are sent when:
+
+- A **SellSignal** line is successfully appended to `logs/signals.jsonl`.
+- A **live** order attempt returns status `failed_prepare`, `failed_transmit`, `timeout`, `error`, or `cancelled`, or raises in `transmit_live_sell_signals`.
 
 ### 2b. GUI Mode
 

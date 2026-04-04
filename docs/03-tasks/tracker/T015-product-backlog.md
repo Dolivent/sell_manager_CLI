@@ -31,6 +31,7 @@ Capture non-bug product ideas. Split into new tasks when prioritized.
 | ID | Item from seed list | Tracker |
 |----|---------------------|---------|
 | T016 | Configurable rotation policy per log file | [T016-trace-rotation-env.md](T016-trace-rotation-env.md) — **DONE** (S008) |
+| T017 | Push/email/Telegram alert on SellSignal or failed order (SMTP email) | [T017-smtp-alerts.md](T017-smtp-alerts.md) — **DONE** (S009) |
 
 ## 4. Notes
 

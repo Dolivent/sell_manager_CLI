@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from .indicators import simple_moving_average, exponential_moving_average
 from .config import Config
+from .alerts import alert_sellsignal_logged
 
 
 def _log_path() -> Path:
@@ -57,6 +58,10 @@ def append_signal(entry: Dict[str, Any]) -> bool:
             if decision == "SellSignal":
                 ticker = data.get("ticker") or data.get("symbol") or "<unknown>"
                 print(f"signal: {ticker} -> {decision}")
+                try:
+                    alert_sellsignal_logged(data)
+                except Exception:
+                    pass
         except Exception:
             # avoid breaking logging on print errors
             pass

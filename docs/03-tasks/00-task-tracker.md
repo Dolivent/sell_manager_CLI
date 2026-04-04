@@ -25,7 +25,7 @@
 
 ---
 
-## Backlog Summary (T006–T016)
+## Backlog Summary (T006–T017+)
 
 | ID | Title | Status | Priority | Detail |
 |----|-------|--------|----------|--------|
@@ -40,10 +40,11 @@
 | T014 | GUI smoke checklist | DONE | P3 | [T014](tracker/T014-gui-smoke.md) |
 | T015 | Product backlog bucket | OPEN | P3 | [T015](tracker/T015-product-backlog.md) — living list of future features |
 | T016 | Trace rotation via env (`SELLMANAGEMENT_TRACE_*`) | DONE | P3 | [T016](tracker/T016-trace-rotation-env.md) — from T015 |
+| T017 | SMTP alerts (SellSignal + failed live orders) | DONE | P3 | [T017](tracker/T017-smtp-alerts.md) — from T015 |
 
 ## Active Tasks
 
-**T015** remains an **OPEN** parking lot for unprioritised product ideas (see tracker file). **T016** (trace rotation env) is **DONE** (session S008). T006–T014 remain **DONE** (session S007).
+**T015** remains an **OPEN** parking lot for unprioritised product ideas (see tracker file). **T016** (trace rotation env) is **DONE** (S008). **T017** (SMTP alerts) is **DONE** (S009). T006–T014 remain **DONE** (S007).
 
 ---
 
@@ -208,6 +209,11 @@ Replace the `trace.py` append-only approach with Python's `logging` module (with
 **Status:** DONE | **Session:** S008 | **Detail:** [`T016-trace-rotation-env.md`](tracker/T016-trace-rotation-env.md)  
 **Resolution:** `SELLMANAGEMENT_TRACE_MAX_MB`, `SELLMANAGEMENT_TRACE_BACKUPS`; runbook + API + tests.
 
+### T017 — SMTP email alerts
+
+**Status:** DONE | **Session:** S009 | **Detail:** [`T017-smtp-alerts.md`](tracker/T017-smtp-alerts.md)  
+**Resolution:** `alerts.py`, env `SELLMANAGEMENT_SMTP_*` / `SELLMANAGEMENT_ALERT_TO`; hooks in `signals.append_signal` and `cli_executor.transmit_live_sell_signals`; `tests/test_alerts.py`.
+
 ---
 
 ## Completed Tasks
@@ -229,6 +235,7 @@ Replace the `trace.py` append-only approach with Python's `logging` module (with
 | T013 | Runbook ops | DONE | S007 |
 | T014 | GUI smoke doc | DONE | S007 |
 | T016 | Trace rotation env vars | DONE | S008 |
+| T017 | SMTP alerts | DONE | S009 |
 
 ---
 

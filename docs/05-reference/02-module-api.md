@@ -1,6 +1,6 @@
 # Module API Reference
 
-> **Version:** 1.2 | **Last Updated:** 2026-04-04 (S007)  
+> **Version:** 1.3 | **Last Updated:** 2026-04-04 (S009)  
 > Covers public-facing functions and classes only. Internal helpers are omitted.
 
 ---
@@ -119,6 +119,27 @@ def backfill_halfhours_sequential(ib_client, token: str, target_bars=200) -> Lis
 
 ---
 
+### `alerts.py`
+
+```python
+def send_smtp_alert(subject: str, body: str) -> bool:
+    """Send plain-text email if env is complete; else log one WARNING per process and return False.
+
+    Env: SELLMANAGEMENT_SMTP_HOST, SELLMANAGEMENT_ALERT_TO, optional SELLMANAGEMENT_SMTP_PORT (default 587),
+    optional SELLMANAGEMENT_SMTP_USER + SELLMANAGEMENT_SMTP_PASS (if user set, pass key must exist)."""
+
+def alert_sellsignal_logged(entry: Dict[str, Any]) -> None:
+    """Best-effort email after a SellSignal is logged."""
+
+def order_transmit_needs_alert(res: Dict[str, Any]) -> bool:
+    """True if live result status should trigger a failure email."""
+
+def alert_order_failed(*, ticker: Optional[str], result: Dict[str, Any]) -> None
+def alert_order_exception(*, ticker: Optional[str], error: str) -> None
+```
+
+---
+
 ### `signals.py`
 
 ```python
@@ -131,7 +152,8 @@ def decide(close: float, ma_type: str, length: int, values: List[float]) -> Dict
     decision is 'SellSignal' | 'NoSignal' | 'Skip'."""
 
 def append_signal(entry: Dict[str, Any]) -> bool:
-    """Append entry to signals.jsonl. Returns True on success."""
+    """Append entry to signals.jsonl. Returns True on success.
+    After a successful write, if decision is SellSignal, may send SMTP alert (see alerts.py)."""
 ```
 
 ---
@@ -217,7 +239,8 @@ def confirm_live_transmit(*, assume_yes: bool = False, reader=...) -> bool:
 
 ```python
 def transmit_live_sell_signals(ib: Any, generated: List[Dict[str, Any]], *, snapshot_ts: str) -> None:
-    """Live path only: place MKT closes for SellSignal rows (intent dedup, qty cap, execute_order)."""
+    """Live path only: place MKT closes for SellSignal rows (intent dedup, qty cap, execute_order).
+    On failure statuses or exceptions, may send SMTP alert (see alerts.py)."""
 ```
 
 ---

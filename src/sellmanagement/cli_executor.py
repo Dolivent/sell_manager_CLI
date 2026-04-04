@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 from .intent_store import exists as intent_exists
 from .intent_store import update_intent as intent_update
 from .intent_store import write_intent as intent_write
+from .alerts import alert_order_exception, alert_order_failed, order_transmit_needs_alert
 from .orders import execute_order, prepare_close_order
 from .trace import append_trace
 
@@ -152,6 +153,11 @@ def transmit_live_sell_signals(
 
             po = prepare_close_order(ticker, qty_to_send, order_type="MKT")
             res = execute_order(ib, po, dry_run=False)
+            if order_transmit_needs_alert(res):
+                try:
+                    alert_order_failed(ticker=ticker, result=res)
+                except Exception:
+                    pass
             append_trace(
                 {
                     "event": "order_attempt",
@@ -174,6 +180,10 @@ def transmit_live_sell_signals(
             except Exception:
                 pass
         except Exception as ex:
+            try:
+                alert_order_exception(ticker=e.get("ticker"), error=str(ex))
+            except Exception:
+                pass
             append_trace(
                 {
                     "event": "order_attempt_failed",
