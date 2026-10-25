@@ -47,8 +47,12 @@ def exists(intent_id: str) -> bool:
 
 
 def update_intent(intent_id: str, updates: Dict[str, Any]) -> None:
-    """Append an update record for the intent (simple append-only approach)."""
-    # Keep append-only semantics to avoid complex in-place editing.
+    """Append an update record for the intent.
+
+    The store is intentionally append-only; this function does NOT mutate
+    the original record. The most recent record with this `intent_id` is
+    the current state.
+    """
     rec = {"intent_id": intent_id, "update": updates}
     write_intent(rec)
 

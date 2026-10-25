@@ -8,10 +8,33 @@ from __future__ import annotations
 import time
 from typing import Any, Dict, List
 
+from .utils.ticker import tickers_match
+
 
 DEFAULT_FILL_TIMEOUT = 15  # seconds
 DEFAULT_CANCEL_VERIFY_RETRIES = 5
 DEFAULT_CANCEL_VERIFY_DELAY = 1.5  # seconds
+
+
+def _position_qty_for_symbol(positions: List[Any], symbol: str) -> Any:
+    """Return the position qty for ``symbol`` in the supplied positions list, or None."""
+    if not positions:
+        return None
+    for p in positions:
+        try:
+            contract = getattr(p, 'contract', None)
+            sym = None
+            if contract is not None:
+                sym = getattr(contract, 'symbol', None) or getattr(contract, 'localSymbol', None)
+                exchange = getattr(contract, 'exchange', None) or ''
+                token_full = f"{exchange}:{sym}" if exchange else sym
+            else:
+                token_full = None
+            if token_full and tickers_match(token_full, symbol):
+                return getattr(p, 'position', None) or getattr(p, 'pos', None)
+        except Exception:
+            continue
+    return None
 
 
 def find_orders_for_symbol(open_orders: List[Any], symbol: str) -> List[Any]:
@@ -23,13 +46,15 @@ def find_orders_for_symbol(open_orders: List[Any], symbol: str) -> List[Any]:
             sym = None
             if contract is not None:
                 sym = getattr(contract, 'symbol', None) or getattr(contract, 'localSymbol', None)
+                exchange = getattr(contract, 'exchange', None) or ''
+                token_full = f"{exchange}:{sym}" if exchange else sym
+            else:
+                token_full = None
             # fallback: if order has .symbol or .ticker fields
             if sym is None:
                 sym = getattr(o, 'symbol', None) or getattr(o, 'ticker', None)
-            if sym:
-                # token may be EXCHANGE:SYM or SYM; check suffix
-                if symbol.endswith(f":{sym}") or symbol.endswith(sym):
-                    out.append(o)
+            if sym and token_full and tickers_match(token_full, symbol):
+                out.append(o)
         except Exception:
             continue
     return out
@@ -122,16 +147,19 @@ def place_and_finalize(ib_client, prepared_order: Dict[str, Any], timeout: int =
                             pos_after = ib_client.positions()
                         except Exception:
                             pos_after = None
-                        # simple heuristic: if positions changed from before (captured earlier), mark filled
-                        # rely on caller to have positions_before in result for comparison
-                        if result.get('positions_before') is not None and pos_after is not None:
+                        # Compare target symbol's quantity before vs after to detect a fill.
+                        symbol = prepared_order.get('symbol') or prepared_order.get('token')
+                        if symbol and result.get('positions_before') is not None and pos_after is not None:
                             try:
                                 result['positions_after'] = pos_after
-                                # basic heuristic: if positions differ, consider filled
-                                if result['positions_before'] != result['positions_after']:
+                                qty_before = _position_qty_for_symbol(result['positions_before'], symbol)
+                                qty_after = _position_qty_for_symbol(pos_after, symbol)
+                                if qty_before is not None and qty_after is not None and qty_after < qty_before:
                                     final_status = 'filled'
-                                else:
+                                elif qty_before is not None and qty_after is not None and qty_after == qty_before:
                                     final_status = 'cancelled'
+                                else:
+                                    final_status = 'done'
                             except Exception:
                                 final_status = 'done'
                         else:

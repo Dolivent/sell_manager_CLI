@@ -308,7 +308,7 @@ def _cmd_start(args: argparse.Namespace) -> None:
                         try:
                             if not config.dry_run:
                                 if confirm_live_transmit(assume_yes=yes_to_all):
-                                    transmit_live_sell_signals(ib, gen, snapshot_ts=ts or "")
+                                    transmit_live_sell_signals(ib, gen, snapshot_ts=ts or "", dry_run=bool(config.dry_run))
                                 else:
                                     print('Live transmit aborted by user; no orders sent')
                         except Exception:

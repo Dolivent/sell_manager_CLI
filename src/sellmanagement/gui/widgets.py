@@ -106,7 +106,11 @@ class PositionsWidget(QtWidgets.QWidget):
                 if not item:
                     continue
                 ticker = item.text()
-                entry = self.latest_signals.get(ticker) or self.latest_signals.get(ticker.split(":")[-1])
+                entry = None
+                for tk, val in (self.latest_signals or {}).items():
+                    if tickers_match(tk, ticker):
+                        entry = val
+                        break
                 if not entry:
                     # unknown -> gray
                     self._set_status_for_row(r, "Unknown", QColor("lightgray"))
@@ -327,7 +331,11 @@ class PositionsWidget(QtWidgets.QWidget):
                 pass
             # set initial status from latest decision if available
             try:
-                entry = latest.get(ticker) or latest.get(ticker.split(":")[-1])
+                entry = None
+                for tk, val in (latest or {}).items():
+                    if tickers_match(tk, ticker):
+                        entry = val
+                        break
                 if entry:
                     decision = str(entry.get("decision", "") or "")
                     if decision.strip().lower() == "sellsignal":
