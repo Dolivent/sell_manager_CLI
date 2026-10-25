@@ -9,6 +9,7 @@ from sellmanagement.dashboard import (
     create_app,
     dashboard_port,
     read_latest_snapshot_record,
+    _normalize_host,
 )
 
 
@@ -71,6 +72,28 @@ class TestDashboard(unittest.TestCase):
     def test_dashboard_port_from_env(self):
         with patch.dict(os.environ, {"SELLMANAGEMENT_DASHBOARD_PORT": "6001"}, clear=False):
             self.assertEqual(dashboard_port(), 6001)
+
+    def test_run_dashboard_downgrades_non_loopback_host(self):
+        # M1: --host 0.0.0.0 (or any non-loopback) must be downgraded to 127.0.0.1.
+        from unittest.mock import MagicMock
+        with patch("sellmanagement.dashboard.create_app") as fake_create:
+            fake_app = MagicMock()
+            fake_create.return_value = fake_app
+            with patch("sellmanagement.dashboard.dashboard_port", return_value=5055):
+                with patch.object(fake_app, "run") as fake_run:
+                    import sellmanagement.dashboard as dash_mod
+                    dash_mod.run_dashboard(host="0.0.0.0")
+        args, kwargs = fake_run.call_args
+        self.assertEqual(kwargs.get("host"), "127.0.0.1")
+
+    def test_normalize_host_allows_loopback(self):
+        self.assertEqual(_normalize_host("127.0.0.1"), "127.0.0.1")
+        self.assertEqual(_normalize_host("localhost"), "localhost")
+        self.assertEqual(_normalize_host("::1"), "::1")
+
+    def test_normalize_host_rejects_non_loopback(self):
+        for bad in ("0.0.0.0", "192.168.1.10", "10.0.0.1"):
+            self.assertEqual(_normalize_host(bad), "127.0.0.1")
 
 
 if __name__ == "__main__":

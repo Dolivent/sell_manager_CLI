@@ -135,8 +135,23 @@ def create_app(
     return app
 
 
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def _normalize_host(host: str) -> str:
+    """Return a safe bind host: any non-loopback address is downgraded to 127.0.0.1."""
+    if host in _LOOPBACK_HOSTS:
+        return host
+    logger.warning(
+        "Refusing to bind dashboard to non-loopback host %r; overriding to 127.0.0.1",
+        host,
+    )
+    return "127.0.0.1"
+
+
 def run_dashboard(*, host: str = "127.0.0.1") -> None:
     port = dashboard_port()
+    bind_host = _normalize_host(host)
     app = create_app()
-    logger.info("Dashboard listening on http://%s:%s", host, port)
-    app.run(host=host, port=port, debug=False, use_reloader=False)
+    logger.info("Dashboard listening on http://%s:%s", bind_host, port)
+    app.run(host=bind_host, port=port, debug=False, use_reloader=False)
