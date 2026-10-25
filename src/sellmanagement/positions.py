@@ -28,7 +28,11 @@ def parse_positions_text(text: str) -> Dict[str, List[Interval]]:
       - For `short` direction: "sold" opens, "bought" closes.
       - Multiple buys when already open are ignored for opening semantics; intervals are merged where they overlap.
     """
-    ticker_events: Dict[str, List[Tuple[Timestamp, str]]] = {}
+    # Track per-ticker, per-block events. Each block corresponds to a single
+    # header line and its immediately-following event lines; direction is
+    # captured per-block so short and long positions can coexist in the same
+    # file across multiple blocks.
+    ticker_blocks: Dict[str, List[Tuple[Timestamp, str, str]]] = {}
     current_ticker: Optional[str] = None
     current_direction: Optional[str] = None
 
@@ -45,7 +49,7 @@ def parse_positions_text(text: str) -> Dict[str, List[Interval]]:
             current_ticker = m_header.group(1).upper()
             current_direction = m_header.group(2).lower()
             # ensure list exists
-            ticker_events.setdefault(current_ticker, [])
+            ticker_blocks.setdefault(current_ticker, [])
             continue
 
         if current_ticker is None:
@@ -59,39 +63,28 @@ def parse_positions_text(text: str) -> Dict[str, List[Interval]]:
 
         date_part, time_part, _price, action = m_event.groups()
         dt = datetime.strptime(f"{date_part} {time_part}", "%Y-%m-%d %H:%M:%S")
-        ticker_events.setdefault(current_ticker, []).append((dt, action.lower()))
+        ticker_blocks.setdefault(current_ticker, []).append((dt, action.lower(), current_direction))
 
-    # Convert events into intervals per ticker
+    # Convert events into intervals per ticker, honouring per-block direction.
     ticker_intervals: Dict[str, List[Interval]] = {}
-    for ticker, events in ticker_events.items():
+    for ticker, events in ticker_blocks.items():
         # sort chronologically just in case
         events_sorted = sorted(events, key=lambda x: x[0])
-        # Determine direction: find most recent header direction occurrence by scanning text
-        # For simplicity, assume direction at the time blocks were parsed applies; default to long
-        # We don't have the header directions stored per-block here, so assume long if no explicit.
-        # To be robust, direction detection should be done at block-level (kept if needed).
-        # For now default to 'long' semantics.
-        # We'll attempt to infer direction by looking at actions distribution if needed.
-        # Find intervals for "long" semantics by default.
-        direction = "long"
 
         intervals: List[Interval] = []
         current_open: Optional[Timestamp] = None
+        current_dir: Optional[str] = None
 
-        if direction == "long":
-            for dt, action in events_sorted:
-                if action == "bought":
-                    if current_open is None:
-                        current_open = dt
-                elif action == "sold":
-                    if current_open is not None:
-                        intervals.append((current_open, dt))
-                        current_open = None
-            if current_open is not None:
-                intervals.append((current_open, None))
-        else:
-            # short (not used currently) - entry on 'sold', close on 'bought'
-            for dt, action in events_sorted:
+        for dt, action, direction in events_sorted:
+            # If direction changes mid-stream for the same ticker, close the
+            # currently open interval (if any) before switching semantics.
+            if current_dir is not None and direction != current_dir and current_open is not None:
+                intervals.append((current_open, dt))
+                current_open = None
+            current_dir = direction
+
+            if direction == "short":
+                # short: entry on 'sold', close on 'bought'
                 if action == "sold":
                     if current_open is None:
                         current_open = dt
@@ -99,8 +92,17 @@ def parse_positions_text(text: str) -> Dict[str, List[Interval]]:
                     if current_open is not None:
                         intervals.append((current_open, dt))
                         current_open = None
-            if current_open is not None:
-                intervals.append((current_open, None))
+            else:
+                # long (default): entry on 'bought', close on 'sold'
+                if action == "bought":
+                    if current_open is None:
+                        current_open = dt
+                elif action == "sold":
+                    if current_open is not None:
+                        intervals.append((current_open, dt))
+                        current_open = None
+        if current_open is not None:
+            intervals.append((current_open, None))
 
         # Merge overlapping intervals (and handle open-ended intervals)
         merged: List[Interval] = []

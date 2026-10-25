@@ -601,6 +601,8 @@ def _compute_ma_and_distance(ass: Optional[Dict[str, Any]], closes: List[float],
 # ---------------------------------------------------------------------------
 
 def _write_snapshot_log(end_ts: str, rows: List[SnapshotRow]) -> None:
+    if not rows:
+        return
     with LOG_PATH.open("a", encoding="utf-8") as f:
         f.write(json.dumps({"start_ts": rows[0].ts if rows else end_ts, "end_ts": end_ts, "rows": [r.to_dict() for r in rows]}, ensure_ascii=False) + "\n")
 

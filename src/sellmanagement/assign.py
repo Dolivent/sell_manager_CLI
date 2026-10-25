@@ -135,6 +135,9 @@ def sync_assignments(tokens: Iterable[str], default_type: str = "SMA", default_l
     toks = [t.strip() for t in tokens if t and t.strip()]
     toks_upper = [t.upper() for t in toks]
 
+    if not toks:
+        return {"added": [], "removed": [], "kept": []}
+
     existing = get_assignments()  # keyed by upper ticker
 
     kept = []
@@ -181,6 +184,9 @@ def sync_assignments_to_positions(tokens: Iterable[str]) -> dict:
     _ensure_config_dir()
     toks = [t.strip() for t in tokens if t and t.strip()]
     toks_upper = [t.upper() for t in toks]
+
+    if not toks:
+        return {"added": [], "removed": [], "kept": []}
 
     existing = get_assignments()  # keyed by upper ticker
 
