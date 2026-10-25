@@ -61,6 +61,12 @@ docs/_build/
 config/assigned_ma.csv
 docs/PRD_sell_manager_CLI.md
 
+# Scratch/junk files at the repo root, tools/, tests/, scripts/
+tmp_*.py
+tmp_*.out
+_tmp*.py
+_tmp*.out
+
 # IDE-specific project files (version these — they track session/architecture data)
 
 tools/
