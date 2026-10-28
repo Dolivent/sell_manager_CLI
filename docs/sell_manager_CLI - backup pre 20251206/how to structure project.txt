@@ -1,0 +1,367 @@
+# tactiq.io free youtube transcript
+# No title found
+# https://www.youtube.com/watch/MW3t6jP9AOs
+
+00:00:00.000 No text
+00:00:03.280 How can we get cloud code works well as
+00:00:05.279 your codebase became more and more
+00:00:06.960 complicated without getting to circles
+00:00:09.200 and make you feel frustrated? Once I
+00:00:11.200 learned that there are many things you
+00:00:12.480 can do to improve performance
+00:00:13.759 dramatically through good context
+00:00:15.599 engineering and context engineering
+00:00:17.359 basically means how you can optimize
+00:00:19.119 what goes into conversation history
+00:00:20.880 thread for the cloud code or codeex so
+00:00:23.039 that only relevant and necessary
+00:00:24.480 information are included here to guide
+00:00:26.640 agents next actions. As we know coding
+00:00:28.960 agent like cloud code at default has
+00:00:30.720 200,000 token context limit and if you
+00:00:33.040 run / contacts in your cloud code you
+00:00:35.440 will see breakdown token consumptions
+00:00:37.520 across different categories and this is
+00:00:38.960 a very basic example of what you can do
+00:00:40.559 with context engineering optimization
+00:00:42.160 because in general the whole context
+00:00:43.600 consist of few different things the
+00:00:45.440 system promise assistant tools is
+00:00:47.120 something you can't really change it
+00:00:48.719 always comes with agent so the part you
+00:00:50.640 can optimize is the agent has any MCP
+00:00:53.039 tools or custom agents that you don't
+00:00:54.960 really use but consume a lot of tokens
+00:00:56.640 and the memory file here are basically
+00:00:58.239 your cloud.md file and I know as your
+00:01:00.480 project became bigger and bigger
+00:01:01.840 sometimes the cloud MD file just became
+00:01:03.680 so big that leaves very little room for
+00:01:05.840 the actual message. So in this very
+00:01:07.840 specific example I can already see that
+00:01:09.840 if I remove all those MCPS from this
+00:01:11.680 agent it will immediately give me 2%
+00:01:13.520 additional context token window. So this
+00:01:15.760 is one very basic example of what you
+00:01:17.600 can do to optimize context window
+00:01:19.360 better. The key part you want to
+00:01:20.560 optimize is the actual message which
+00:01:22.720 including the user message you send as
+00:01:24.560 well as list of two call actions that
+00:01:26.320 the agent take and the key thing here is
+00:01:28.000 that how can you making sure all the
+00:01:29.000 No text
+00:01:29.520 information in the history here is
+00:01:31.439 relevant and reduce noise as much as
+00:01:33.600 possible and there are many things you
+00:01:35.119 can do here for example sub agent is a
+00:01:36.880 great tool that you can use to reduce
+00:01:38.799 context so when I look at what happened
+00:01:40.640 here if you prompt agent help me add a
+00:01:42.880 Google O the majority of the actions
+00:01:45.040 agent take here is actually not about
+00:01:46.720 making trends but doing the research to
+00:01:48.799 figure out the I plan for the
+00:01:50.079 implementation and those research steps
+00:01:52.159 generally took whole bunch of context in
+00:01:54.320 the conversation thread and with feature
+00:01:56.159 like sub agents instead of including all
+00:01:58.000 those research related token consumption
+00:02:00.000 in the main conversation thread you just
+00:02:01.920 delegate and offload the whole token
+00:02:03.840 consumption related to research to the
+00:02:05.600 sub agent where it has isolated
+00:02:07.119 conversation thread to do just this and
+00:02:09.440 return back a summary of the research
+00:02:11.599 which means only absolute necessary
+00:02:13.440 information and tokens are included in
+00:02:15.440 the main conversation thread. So one
+00:02:17.200 very basic thing you can do is that
+00:02:18.720 before you implement big feature you can
+00:02:20.319 just add a small text that let's use
+00:02:22.239 task or sub agent to do the research
+00:02:24.160 first so that it can trigger this
+00:02:25.840 specific behavior and this is why I
+00:02:27.280 often use a compact command much more
+00:02:29.280 proactively so that after agent complete
+00:02:31.440 certain set of fairly isolated task
+00:02:33.840 often just run the compact so that we
+00:02:35.920 can proactively clean up the
+00:02:37.360 conversation threadive
+00:02:39.920 methods that I often use is set up your
+00:02:41.000 No text
+00:02:42.400 own documentation system for your
+00:02:44.000 codebase there are many different ways
+00:02:45.680 you can do Yeah. And this is the part I
+00:02:47.360 want to dive a bit deeper today. But
+00:02:48.959 before we dive into that, one trend has
+00:02:50.560 been happening is that more and more
+00:02:51.760 people use cloud code to not only doing
+00:02:53.599 coding task but day-to-day operation
+00:02:55.360 task from handling your emails, using
+00:02:57.440 different system, automate tasking,
+00:02:58.959 different productivity apps, journaling
+00:03:00.800 and this tell us there's massive layer
+00:03:02.560 to build. Look at what type of use case
+00:03:04.319 people are trying to hack into cloud
+00:03:06.239 code then productionize it into aic
+00:03:08.319 products. That's why I want to introduce
+00:03:09.920 you to this research called AI agents
+00:03:11.840 unleashed a pragmatic report about what
+00:03:13.920 kind of things and use case people are
+00:03:15.519 hacking agents into who those people are
+00:03:17.360 what they doing and dive deeply into
+00:03:19.120 real world examples where they interview
+00:03:21.200 hundreds of people from top stars and
+00:03:23.120 enterprise in the world across marketing
+00:03:24.800 sales operation as well as real world
+00:03:26.400 learnings of what actually worked and
+00:03:27.920 what didn't the common pitfalls and
+00:03:29.440 challenge that people are facing today.
+00:03:30.879 So you can use those information to
+00:03:32.239 direct your agenda product road map much
+00:03:33.920 better. One of the favorite part is that
+00:03:35.440 they propose a really useful framework
+00:03:37.200 to think through if a task and use case
+00:03:39.040 that can drive huge business value that
+00:03:40.799 people are currently paying for. So if
+00:03:42.400 you're trying to build a genus, I highly
+00:03:44.640 recommend you go check out this
+00:03:45.920 research. You can access this report for
+00:03:47.760 free in description below. And thanks
+00:03:49.440 HubSpot for sponsoring this video. Now
+00:03:51.599 let's talk about my documentation system
+00:03:53.599 for cloud code. So the purpose of
+00:03:55.280 documentation system is to create a
+00:03:56.959 summarized snapshot of your current
+00:03:58.799 codebase. So instead of agent every time
+00:04:00.799 doing deep research across the whole
+00:04:02.319 codebase to find information that it
+00:04:04.159 need, it can just read a summarized
+00:04:06.159 documentation that clearly pull all the
+00:04:08.000 relevant information together. So it has
+00:04:10.000 less noise in the context window and
+00:04:12.080 also making sure all the relevant
+00:04:13.519 information are feeding into context
+00:04:15.519 instead of hoping agent pull all the
+00:04:17.199 relevant information together by itself.
+00:04:18.798 And the question is what type of
+00:04:19.839 documentation is useful and how can you
+00:04:22.079 make it scalable as your codebase became
+00:04:23.919 larger and larger. So the common
+00:04:25.280 structure I have is something like this.
+00:04:27.040 I typically just have this dot agent
+00:04:28.639 folder that contain all the relevant and
+00:04:30.400 useful information that I need. So one
+00:04:32.160 is a task folder. This is where I store
+00:04:34.080 all the PRDs and if you don't know what
+00:04:35.840 PRD is basically before I implement any
+00:04:38.000 feature I always turn on plan mode and
+00:04:39.680 ask to generate implementation plan and
+00:04:41.600 after finish I will always store the
+00:04:43.040 implementation plan in the task folder.
+00:04:45.520 So next time if we are implementing
+00:04:47.040 something similar we can link to those
+00:04:48.960 implementation doc as a reference and
+00:04:51.199 second part is system folder. So system
+00:04:53.280 folder contains things like project
+00:04:55.199 structure, the database schema, your
+00:04:56.960 APIs or some critical and complex part
+00:04:59.680 of your codebase and those things can go
+00:05:01.600 across different individual PRDs and
+00:05:04.000 really useful for agent to get a overall
+00:05:05.840 understanding and this is also the part
+00:05:07.280 that it can grow bigger and bigger and
+00:05:09.280 third is SOPs. This is where we will log
+00:05:11.520 the standard process for doing certain
+00:05:13.280 things or mistakes you saw agent make.
+00:05:15.280 So after I get agent do something, I
+00:05:17.120 will ask it to generate a SOP for this
+00:05:19.440 specific process. It can be as generic
+00:05:21.600 as like adding a new database table,
+00:05:23.600 what are the list of action you should
+00:05:24.880 take to something more granular like how
+00:05:26.960 to integrate a new replicate model. And
+00:05:29.600 last but not least also a readme file.
+00:05:31.840 So as your codebase became more and more
+00:05:33.520 complicated, there'll be just so many
+00:05:35.280 docs and the readme here is almost like
+00:05:37.440 index of all documentation files you
+00:05:39.520 have and when to read which
+00:05:40.880 documentation file. So the agent can
+00:05:42.560 quickly get an overview of all the
+00:05:44.320 relevant documentations and read
+00:05:45.919 injection history. So this is a common
+00:05:48.320 documentation system I often use.
+00:05:50.160 Meanwhile, I also uses update doc
+00:05:52.479 command quite frequently. What it does
+00:05:54.320 is that it basically includes certain
+00:05:56.000 instructions to agent about what to do
+00:05:58.080 when initialize documentation structure
+00:06:00.160 as well as when I need to update
+00:06:01.759 documentation. So I will run this
+00:06:03.199 command after I implement certain
+00:06:04.880 features or I can use this update doc
+00:06:06.960 command after we help agent correct
+00:06:08.800 certain mistakes so we don't make same
+00:06:10.560 mistakes again. Then it will create this
+00:06:12.080 SOP that clearly list out all the
+00:06:14.000 step-by-step process and also the
+00:06:15.919 related documentations so the agent can
+00:06:18.080 consume more relevant information and
+00:06:20.000 this SOP doc will also be included in
+00:06:22.400 the readme.md. So this is pretty common
+00:06:23.000 No text
+00:06:24.560 structure I use for my projects and
+00:06:26.639 continuously maintain and updating them.
+00:06:28.560 Obviously the best version of
+00:06:29.759 documentation system is always something
+00:06:31.840 tailored to your codebase. For example,
+00:06:33.680 I talked to Simon from AI builder club
+00:06:35.440 where he showcased how he builds a whole
+00:06:37.120 documentation system with his team for
+00:06:39.039 their Lexi codebase. This is the pointer
+00:06:41.199 dock as it were that points to
+00:06:42.880 everything um how we do all sorts of
+00:06:45.120 things and you know best practices
+00:06:48.240 um etc. And so this is very human
+00:06:51.360 readable obviously as well but it is it
+00:06:53.919 was designed more for our LLM friends.
+00:06:58.479 We document all the ways we do our like
+00:07:01.280 migrations how we store the data. We got
+00:07:04.560 a whole class of things with methods for
+00:07:07.759 helpers, updators, utilities, all sorts
+00:07:10.880 of stuff like that. We've sort of split
+00:07:12.400 out all that all this stuff into well
+00:07:15.520 doumented sections.
+00:07:17.840 The very first versions of these we did
+00:07:19.919 inside Claude. We got Claude to generate
+00:07:22.319 the MD files and then we started using
+00:07:24.400 cursor and we've got our own little uh
+00:07:27.360 this thing here. All right.
+00:07:28.720 What what are they these things are
+00:07:30.160 called? Now cursor now has got the slash
+00:07:33.199 commands. I haven't yet experimented
+00:07:35.120 with turning this into a slash command
+00:07:37.039 because I've always found this rather
+00:07:38.400 frustrating that we've only got so much
+00:07:40.960 room to see what's going on in there.
+00:07:43.120 But it's not complicated. We go through
+00:07:45.520 and then we say review this class
+00:07:48.560 and
+00:07:50.319 upgrade the inline documentation. So we
+00:07:53.680 do that first so that then the class has
+00:07:57.039 got the best possible inline
+00:07:58.400 documentation and then we'll use a a
+00:08:01.280 prompt in the prompt interface to
+00:08:04.400 generate the class documentation in more
+00:08:08.240 detail. So there's this workflow that
+00:08:10.080 goes generate or update the inline
+00:08:12.560 documentation and then output that into
+00:08:14.879 the bigger documentation. So I've just
+00:08:17.120 thrown all the LLMs at this to sort of
+00:08:19.520 get as best as we can. It makes the
+00:08:22.479 whole process easier to manage by
+00:08:24.560 exposing all of that.
+00:08:25.840 And let me give you a quick example of
+00:08:27.280 how do I do it. If I start a new
+00:08:28.800 project, let's firstly create cloud.md
+00:08:29.000 No text
+00:08:30.800 file. I just added one section for docs
+00:08:33.200 specifically explain the doc structure
+00:08:35.279 we want agent to follow and then give a
+00:08:37.200 rules that we always update agent folder
+00:08:39.440 docs after we implement certain features
+00:08:41.360 and before we plan any implementation
+00:08:42.958 always raise the ray me first to get the
+00:08:45.279 full context and meanwhile I will also
+00:08:47.200 create a doc cloud folder commands
+00:08:49.839 update doc. MD. This is a simple prompt
+00:08:52.399 that specifically telling agent about
+00:08:54.000 the dock structure and what to do when
+00:08:56.240 we start initialize the doc and what to
+00:08:58.240 do when we ask to update doc as well as
+00:09:00.320 some very specific rules when it create
+00:09:02.160 new doc files. I'm going to show you how
+00:09:03.839 we use this setup to continuously update
+00:09:06.160 docs. So I firstly do /update doc
+00:09:08.880 initialize. This will race through my
+00:09:10.800 current project and try to set up a do
+00:09:12.800 agent folder structure. And once it
+00:09:14.720 finish you will see that it creates this
+00:09:16.240 agent folder and set up a project
+00:09:18.240 architecture as a first doc. And there's
+00:09:20.560 also a readme file under the dot agent
+00:09:22.720 folder which listing out all the docs
+00:09:24.640 that we have. Now let's just take you
+00:09:26.160 through example of how do we use this.
+00:09:28.000 Let's say we want to build a basic app
+00:09:29.600 that can do text to image generation
+00:09:31.279 using a model host on replicate. So I'm
+00:09:33.839 going to copy over a doc and give
+00:09:35.600 prompt. How we build a text to image app
+00:09:38.000 using model above and I'm going to use a
+00:09:40.080 plan mode. And after I finish the plan
+00:09:42.160 I'm going to prompt a save
+00:09:43.200 implementation plan in a do agent/task
+00:09:45.920 folder and start implementation.
+00:09:49.440 Great. Okay, now we have this text to
+00:09:50.640 image model working. Quite often in my
+00:09:52.720 experience, model will fail to integrate
+00:09:54.800 replicated model out of box and that's
+00:09:56.959 where R can use this update doc command
+00:09:59.279 saying generate SOP integrating
+00:10:01.519 replicate model. Then what it will do is
+00:10:03.760 that it will create this replicated
+00:10:05.440 model integration SOP. In this doc, it
+00:10:07.760 will explain specifically step-by-step
+00:10:09.519 integration process, the directory
+00:10:11.440 structure should follow and also there's
+00:10:13.120 a section called related documentations.
+00:10:15.200 So for this one probably didn't make
+00:10:16.640 perfect sense but you can imagine if
+00:10:18.880 your documentation became more and more
+00:10:20.800 complicated. This can be used as a
+00:10:22.560 directory to lead to all related
+00:10:24.240 documents and in the end it will also go
+00:10:26.399 update the readme as well to include
+00:10:28.560 more stuff. So now I can even clear the
+00:10:30.320 conversation without giving too much
+00:10:32.079 context and give different model which
+00:10:33.760 is text to video and give a prompt help
+00:10:35.920 me add text to video capability using
+00:10:37.600 model above plan implementation and read
+00:10:39.680 do agent doc first for context and again
+00:10:42.079 I'm using the plan mode. This time you
+00:10:44.160 can see it reading through different
+00:10:45.440 files to get the full picture. And we're
+00:10:48.240 going to do the same thing. Save the
+00:10:49.760 implementation plan to /task folder and
+00:10:52.160 start implementing. With this one is
+00:10:53.920 able to oneshot this video generation
+00:10:55.920 model and it is fully functional without
+00:10:58.560 any errors. So this how you can imagine
+00:11:00.720 this whole documentation system works.
+00:11:03.279 You can have higher confidence that I
+00:11:04.959 can just come in any time and start
+00:11:06.720 implementing something with pretty
+00:11:08.320 consistent performance. You can do same
+00:11:10.320 thing for your existing codebase as well
+00:11:12.160 to ask cloud code start generating the
+00:11:13.920 system architecture documentations which
+00:11:16.160 can including text project architecture
+00:11:18.079 as well as database schema API endpoint
+00:11:20.240 and many more. If you're interested we
+00:11:21.760 have a specific session in AI builder
+00:11:23.519 club where we include detailed
+00:11:24.880 instructions of the cloudd and update do
+00:11:27.760 commands that you can copy paste as well
+00:11:29.519 as a 1h hour workshop where Simon dive
+00:11:31.839 deeper into his specific setup. So you
+00:11:34.000 can learn how others are generating
+00:11:35.680 documentation system for big and complex
+00:11:37.760 codebase. I have put the link in the
+00:11:39.519 description below for you to join AI
+00:11:40.880 builder club. So feel free to click and
+00:11:42.560 join if you're interested. I hope you
+00:11:44.160 enjoy this video.

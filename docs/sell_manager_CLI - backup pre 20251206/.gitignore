@@ -1,0 +1,96 @@
+# Ignore generated and sensitive files
+# Project-specific sensitive or internal documents
+AUDIT_REPORT.md
+PRD_sell_manager_CLI.md
+
+# Logs and runtime artifacts
+logs/
+*.log
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+env/
+.venv/
+venv/
+
+# Byte-compiled / C extensions
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+
+# Editor/IDE config
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test and coverage outputs
+.pytest_cache/
+coverage.xml
+htmlcov/
+
+# Config cache and secrets
+config/cache/
+config/*.secret
+config/*.key
+
+# Local environment and credentials
+.env
+.env.*
+secrets.yml
+
+# Jupyter
+.ipynb_checkpoints
+
+# Sphinx docs build
+docs/_build/
+
+# Misc
+*.log.*
+config/assigned_ma.csv
+docs/PRD_sell_manager_CLI.md
+
+# Ignore top-level docs folder
+docs/
+how to structure project.txt
+
+# ---------------------------------------------------------------------------
+# Adjustments made 2026-10-28 when this snapshot was converted from a nested
+# git repository (gitlink) into ordinary files tracked directly by the parent
+# sell_manager_CLI repository.
+#
+# The original rules above are still honoured. The following negations only
+# re-include the dated snapshot's own source/test/metadata files and its real
+# documentation, which have no other home in the parent repository.
+#
+# Still deliberately ignored: config/cache/, config/assigned_ma.csv,
+# config/*.secret, config/*.key, logs/, .env*, secrets.yml, *.log
+# ---------------------------------------------------------------------------
+!src/sellmanagement.egg-info/
+!src/sellmanagement.egg-info/**
+!tests/
+!tests/**
+!docs/
+!docs/PRD_sell_manager_CLI.md
+!docs/Public_prep_AUDIT_REPORT.md
+!docs/refactor_audit.md
+!docs/samples/
+!docs/samples/README.md
+!docs/samples/sanitized_logs.jsonl
+!how to structure project.txt
+# Re-ignore Python bytecode caches that the broad negations above would
+# otherwise re-include.
+__pycache__/
+!__pycache__/
+**/__pycache__/
+**/__pycache__/**
+*.py[cod]
